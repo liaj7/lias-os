@@ -411,6 +411,31 @@ const DEFAULT_SETTINGS = {
     { name: 'Content', emoji: '✨', color: '#EC4899' },
     { name: 'AI', emoji: '🤖', color: '#F59E0B' },
   ],
+  // Web Clipper auto-classification rules
+  // Each rule: if the URL or text contains the keyword, assign to that domain.
+  // First match wins. Case-insensitive.
+  clipRules: [
+    { keyword: 'twitter.com', domain: 'Marketing' },
+    { keyword: 'x.com', domain: 'Marketing' },
+    { keyword: 'tiktok.com', domain: 'Marketing' },
+    { keyword: 'crypto', domain: 'Crypto' },
+    { keyword: 'bitcoin', domain: 'Crypto' },
+    { keyword: 'ethereum', domain: 'Crypto' },
+    { keyword: 'defi', domain: 'Crypto' },
+    { keyword: 'web3', domain: 'Crypto' },
+    { keyword: 'blockchain', domain: 'Crypto' },
+    { keyword: 'openai', domain: 'AI & Tech' },
+    { keyword: 'anthropic', domain: 'AI & Tech' },
+    { keyword: 'chatgpt', domain: 'AI & Tech' },
+    { keyword: 'claude', domain: 'AI & Tech' },
+    { keyword: 'ai', domain: 'AI & Tech' },
+    { keyword: 'marketing', domain: 'Marketing' },
+    { keyword: 'growth', domain: 'Marketing' },
+    { keyword: 'seo', domain: 'Marketing' },
+    { keyword: 'health', domain: 'Personal Growth' },
+    { keyword: 'economy', domain: '경제/시사' },
+    { keyword: '경제', domain: '경제/시사' },
+  ],
 };
 
 const DEFAULT_DATA = {
@@ -710,12 +735,16 @@ function SettingsPanel({ open, onClose, initialTab }) {
   const [newDomain, setNewDomain] = useState('');
   const [newCategory, setNewCategory] = useState('');
 
+  const [newRuleKeyword, setNewRuleKeyword] = useState('');
+  const [newRuleDomain, setNewRuleDomain] = useState('');
+
   const tabs = [
     { key: 'tags', label: 'Tags' },
     { key: 'areas', label: 'Areas' },
-    { key: 'domains', label: 'Learning Domains' },
-    { key: 'categories', label: 'Spending Categories' },
-    { key: 'progress', label: 'Progress Bars' },
+    { key: 'domains', label: 'Domains' },
+    { key: 'categories', label: 'Categories' },
+    { key: 'progress', label: 'Progress' },
+    { key: 'cliprules', label: '📎 Clip Rules' },
   ];
 
   return (
@@ -862,6 +891,61 @@ function SettingsPanel({ open, onClose, initialTab }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {activeTab === 'cliprules' && (
+        <div className="space-y-3">
+          <p className="text-dim text-sm mb-2">
+            When you share content to Lia's OS (via your phone's Share menu), it auto-classifies into a Learning domain using these rules. First keyword match wins.
+          </p>
+
+          {/* Bookmarklet */}
+          <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-medium">Desktop: Drag this to your bookmarks bar</p>
+            <a href={"javascript:void(window.open('" + window.location.origin + window.location.pathname + "?title='+encodeURIComponent(document.title)+'&url='+encodeURIComponent(location.href)+'&text='+encodeURIComponent(window.getSelection().toString()),'_self'))"}
+              className="inline-block px-4 py-2 bg-accent text-white text-xs rounded-lg font-medium cursor-grab"
+              onClick={e => e.preventDefault()}>
+              📎 Clip to Lia's OS
+            </a>
+            <p className="text-[10px] text-dim">On mobile, use your phone's "Share" button instead — Lia's OS will appear in the share menu after you install it.</p>
+          </div>
+
+          {/* Rules list */}
+          <div className="space-y-1.5">
+            {(settings.clipRules || []).map((rule, i) => (
+              <div key={i} className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+                <span className="text-sm flex-1 font-mono text-text">{rule.keyword}</span>
+                <span className="text-xs text-dim">→</span>
+                <select value={rule.domain} onChange={e => {
+                  const updated = [...settings.clipRules];
+                  updated[i] = { ...updated[i], domain: e.target.value };
+                  updateSettings('clipRules', updated);
+                }} className="bg-bg border border-border rounded-lg px-2 py-1 text-xs text-text outline-none">
+                  {settings.learningDomains.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <button onClick={() => updateSettings('clipRules', settings.clipRules.filter((_, j) => j !== i))}
+                  className="text-dim hover:text-red-400 text-sm w-8 h-8 flex items-center justify-center">✕</button>
+              </div>
+            ))}
+          </div>
+
+          {/* Add new rule */}
+          <div className="flex gap-2 items-center flex-wrap">
+            <input value={newRuleKeyword} onChange={e => setNewRuleKeyword(e.target.value)}
+              placeholder="Keyword (e.g. 'solana')"
+              className="flex-1 min-w-[120px] bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none" />
+            <span className="text-xs text-dim">→</span>
+            <select value={newRuleDomain || settings.learningDomains[0]} onChange={e => setNewRuleDomain(e.target.value)}
+              className="bg-bg border border-border rounded-lg px-2 py-2 text-sm text-text outline-none">
+              {settings.learningDomains.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <button onClick={() => {
+              if (!newRuleKeyword.trim()) return;
+              updateSettings('clipRules', [...(settings.clipRules || []), { keyword: newRuleKeyword.trim(), domain: newRuleDomain || settings.learningDomains[0] }]);
+              setNewRuleKeyword('');
+            }} className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm">Add</button>
+          </div>
         </div>
       )}
     </Modal>
@@ -1105,25 +1189,23 @@ function MonthlyCalendar() {
 
           {/* Add event form */}
           {addingEvent && (
-            <div className="bg-black/5 rounded-lg p-3 mb-3 space-y-2 fade-in">
+            <div className="bg-black/5 rounded-lg p-3 mb-3 space-y-3 fade-in">
               <input value={newEvent.title} onChange={e => setNewEvent(p => ({ ...p, title: e.target.value }))}
-                placeholder="Event title..." className="w-full bg-transparent border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50"
+                placeholder="Event title..." className="w-full bg-transparent border border-border rounded-lg px-3 py-2.5 text-sm text-text outline-none focus:border-accent/50"
                 onKeyDown={e => { if (e.key === 'Enter') handleAddEvent(); if (e.key === 'Escape') setAddingEvent(false); }}
                 autoFocus />
-              <div className="flex gap-2 items-center">
-                <input type="time" value={newEvent.time} onChange={e => setNewEvent(p => ({ ...p, time: e.target.value }))}
-                  className="bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
-                <div className="flex gap-1">
-                  {colorOptions.map(c => (
-                    <button key={c} onClick={() => setNewEvent(p => ({ ...p, color: c }))}
-                      className={`w-5 h-5 rounded-full transition-transform ${newEvent.color === c ? 'scale-125 ring-2 ring-white/30' : 'hover:scale-110'}`}
-                      style={{ backgroundColor: c }} />
-                  ))}
-                </div>
-                <div className="flex gap-1 ml-auto">
-                  <button onClick={() => setAddingEvent(false)} className="text-xs px-2 py-1 rounded text-dim hover:text-text">Cancel</button>
-                  <button onClick={handleAddEvent} className="text-xs px-3 py-1 rounded bg-accent hover:bg-accent-hover text-white">Save</button>
-                </div>
+              <input type="time" value={newEvent.time} onChange={e => setNewEvent(p => ({ ...p, time: e.target.value }))}
+                className="w-full bg-transparent border border-border rounded-lg px-3 py-2.5 text-sm text-text outline-none" />
+              <div className="flex flex-wrap gap-2 items-center">
+                {colorOptions.map(c => (
+                  <button key={c} onClick={() => setNewEvent(p => ({ ...p, color: c }))}
+                    className={`w-7 h-7 rounded-full transition-transform ${newEvent.color === c ? 'scale-110 ring-2 ring-accent/40' : 'hover:scale-105'}`}
+                    style={{ backgroundColor: c }} />
+                ))}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setAddingEvent(false)} className="flex-1 py-2.5 rounded-lg text-sm text-dim hover:text-text bg-black/5 transition-colors">Cancel</button>
+                <button onClick={handleAddEvent} className="flex-1 py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors">Save</button>
               </div>
             </div>
           )}
@@ -2184,11 +2266,11 @@ function StickyNotes({ domain, color }) {
         <h4 className="text-xs font-semibold text-dim uppercase tracking-wider">📌 Quick Notes</h4>
       </div>
       {/* Add note input */}
-      <div className="flex gap-1 mb-3">
+      <div className="flex gap-2 mb-3">
         <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Jot something down..."
           onKeyDown={e => { if (e.key === 'Enter') addNote(); }}
-          className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-2 text-xs text-text outline-none focus:border-accent/50 placeholder-dim/50" />
-        <button onClick={addNote} className="w-8 h-8 rounded-lg bg-accent hover:bg-accent-hover text-white flex items-center justify-center text-sm flex-shrink-0">+</button>
+          className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-2.5 text-sm text-text outline-none focus:border-accent/50 placeholder-dim/50" />
+        <button onClick={addNote} className="w-10 h-10 rounded-lg bg-accent hover:bg-accent-hover text-white flex items-center justify-center text-lg font-bold flex-shrink-0">+</button>
       </div>
       {/* Notes list */}
       <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
@@ -2313,24 +2395,25 @@ function LearningCenter() {
         return (
           <div key={domain} className="bg-card border border-border rounded-xl overflow-hidden">
             {/* Domain header */}
-            <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-black/5 transition-colors" onClick={() => toggleDomain(domain)}>
+            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 cursor-pointer hover:bg-black/5 transition-colors" onClick={() => toggleDomain(domain)}>
               <span className="text-xs">{collapsed ? '▶' : '▼'}</span>
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
               {editingDomainIdx === di ? (
                 <input defaultValue={domain} autoFocus
                   onBlur={e => renameDomain(di, e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') renameDomain(di, e.target.value); if (e.key === 'Escape') setEditingDomainIdx(null); }}
                   onClick={e => e.stopPropagation()}
-                  className="bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none" />
+                  className="bg-transparent border border-accent/50 rounded px-2 py-1 text-sm text-text outline-none" />
               ) : (
-                <span className="font-medium text-sm flex-1">{domain}</span>
+                <span className="font-medium text-sm flex-1 truncate">{domain}</span>
               )}
-              <span className="text-[10px] text-dim bg-black/5 px-2 py-0.5 rounded-full">{entries.length} notes</span>
-              <span className="text-[10px] text-dim bg-black/5 px-2 py-0.5 rounded-full">{stickyCount} quick</span>
-              <button onClick={e => { e.stopPropagation(); setEditingDomainIdx(di); }} className="text-dim hover:text-accent text-xs">✏️</button>
+              <span className="text-[10px] text-dim bg-black/5 px-2 py-0.5 rounded-full hidden sm:inline">{entries.length} notes</span>
+              <span className="text-[10px] text-dim bg-black/5 px-2 py-0.5 rounded-full hidden sm:inline">{stickyCount} quick</span>
+              <button onClick={e => { e.stopPropagation(); setEditingDomainIdx(di); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-dim hover:text-accent hover:bg-black/5 text-sm">✏️</button>
               <button onClick={e => { e.stopPropagation(); setConfirmDelete({ type: 'domain', idx: di, name: domain }); }}
-                className="text-dim hover:text-red-400 text-xs">✕</button>
-              <button onClick={e => { e.stopPropagation(); setAddingEntry(domain); }} className="text-dim hover:text-accent text-xs">+</button>
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-dim hover:text-red-400 hover:bg-black/5 text-sm">✕</button>
+              <button onClick={e => { e.stopPropagation(); setAddingEntry(domain); }}
+                className="w-8 h-8 rounded-lg bg-accent hover:bg-accent-hover text-white flex items-center justify-center text-base font-bold flex-shrink-0">+</button>
             </div>
 
             {!collapsed && (
@@ -2703,11 +2786,127 @@ function FinanceBoard() {
   );
 }
 
+// ─── Web Clipper: classify incoming share ───
+function classifyClip(title, text, url, clipRules) {
+  const combined = `${title || ''} ${text || ''} ${url || ''}`.toLowerCase();
+  for (const rule of (clipRules || [])) {
+    if (combined.includes(rule.keyword.toLowerCase())) {
+      return rule.domain;
+    }
+  }
+  return null; // no match → user picks manually
+}
+
+// ─── Web Clipper: Review Modal ───
+function ClipReviewModal({ clip, onSave, onDiscard }) {
+  const { settings } = useData();
+  const [domain, setDomain] = useState(clip.suggestedDomain || settings.learningDomains[0] || '');
+  const [title, setTitle] = useState(clip.title || '');
+  const [notes, setNotes] = useState(clip.text || '');
+  const [source, setSource] = useState(clip.url ? 'Article' : 'Hands-on');
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4" onClick={onDiscard}>
+      <div className="w-full sm:max-w-lg bg-card sm:rounded-2xl rounded-t-2xl p-5 sm:p-6 space-y-4 fade-in max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center text-lg">📎</div>
+          <div>
+            <h3 className="font-semibold">Incoming Clip</h3>
+            <p className="text-xs text-dim">From your share — review and save to Learning Center</p>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-dim block mb-1">Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)}
+            className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text outline-none focus:border-accent/50" />
+        </div>
+
+        {clip.url && (
+          <div className="bg-black/5 rounded-lg px-3 py-2 flex items-center gap-2">
+            <span className="text-xs text-dim">🔗</span>
+            <span className="text-xs text-accent truncate flex-1">{clip.url}</span>
+          </div>
+        )}
+
+        <div>
+          <label className="text-xs text-dim block mb-1">Domain</label>
+          <select value={domain} onChange={e => setDomain(e.target.value)}
+            className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text outline-none">
+            {settings.learningDomains.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          {clip.suggestedDomain && (
+            <p className="text-[10px] text-accent mt-1">Auto-classified as "{clip.suggestedDomain}" based on your clip rules</p>
+          )}
+        </div>
+
+        <div>
+          <label className="text-xs text-dim block mb-1">Notes / Key takeaway</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)}
+            className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text outline-none focus:border-accent/50 resize-none" rows={4}
+            placeholder="What's the insight? What caught your eye?" />
+        </div>
+
+        <div>
+          <label className="text-xs text-dim block mb-1">Source type</label>
+          <select value={source} onChange={e => setSource(e.target.value)}
+            className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text outline-none">
+            <option>Article</option><option>Video</option><option>Tweet</option><option>TikTok</option><option>Podcast</option><option>Book</option><option>Conversation</option>
+          </select>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button onClick={onDiscard} className="flex-1 py-3 rounded-xl text-sm text-dim bg-black/5 hover:bg-black/10 transition-colors">Discard</button>
+          <button onClick={() => onSave({ title, domain, notes, source, url: clip.url })}
+            className="flex-1 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors">
+            Save to Learning
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ───
 function App() {
   const [activeBoard, setActiveBoard] = useState('braindump');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('tags');
+  const [pendingClip, setPendingClip] = useState(null);
+  const { settings, updateData } = useData();
+
+  // ─── Detect incoming share (Web Clipper / Share Target) ───
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedTitle = params.get('title') || '';
+    const sharedText  = params.get('text') || '';
+    const sharedUrl   = params.get('url') || '';
+
+    if (sharedTitle || sharedText || sharedUrl) {
+      const suggestedDomain = classifyClip(sharedTitle, sharedText, sharedUrl, settings.clipRules);
+      setPendingClip({
+        title: sharedTitle || (sharedUrl ? new URL(sharedUrl).hostname : 'Untitled clip'),
+        text: sharedText,
+        url: sharedUrl,
+        suggestedDomain,
+      });
+      // Clean URL params so refreshing doesn't re-trigger
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const handleSaveClip = ({ title, domain, notes, source, url }) => {
+    const entry = {
+      id: uid(), title, domain,
+      source, sourceName: url || '',
+      takeaways: notes,
+      contentPotential: false,
+      fromTask: null, date: todayISO(),
+    };
+    updateData('learnings', prev => [entry, ...prev]);
+    setPendingClip(null);
+    setActiveBoard('learning'); // switch to Learning Center to see the new entry
+  };
 
   const openSettings = (tab = 'tags') => {
     setSettingsTab(tab);
@@ -2733,6 +2932,9 @@ function App() {
         {renderBoard()}
       </main>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} initialTab={settingsTab} />
+      {pendingClip && (
+        <ClipReviewModal clip={pendingClip} onSave={handleSaveClip} onDiscard={() => setPendingClip(null)} />
+      )}
     </div>
   );
 }
