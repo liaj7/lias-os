@@ -900,15 +900,42 @@ function SettingsPanel({ open, onClose, initialTab }) {
             When you share content to Lia's OS (via your phone's Share menu), it auto-classifies into a Learning domain using these rules. First keyword match wins.
           </p>
 
-          {/* Bookmarklet */}
-          <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 space-y-2">
-            <p className="text-xs font-medium">Desktop: Drag this to your bookmarks bar</p>
-            <a href={"javascript:void(window.open('" + window.location.origin + window.location.pathname + "?title='+encodeURIComponent(document.title)+'&url='+encodeURIComponent(location.href)+'&text='+encodeURIComponent(window.getSelection().toString()),'_self'))"}
-              className="inline-block px-4 py-2 bg-accent text-white text-xs rounded-lg font-medium cursor-grab"
-              onClick={e => e.preventDefault()}>
-              📎 Clip to Lia's OS
-            </a>
-            <p className="text-[10px] text-dim">On mobile, use your phone's "Share" button instead — Lia's OS will appear in the share menu after you install it.</p>
+          {/* How to clip */}
+          <div className="space-y-3">
+            {/* Quick clip button */}
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-green-800">📎 Fastest way (any device)</p>
+              <p className="text-xs text-green-700">Copy a URL or text anywhere → open Lia's OS → tap the <strong>📎 button</strong> in the header. Done.</p>
+            </div>
+
+            {/* iOS Shortcut */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-blue-800">iPhone: Add to Share Menu</p>
+              <p className="text-xs text-blue-700">Create an iOS Shortcut so Lia's OS appears in your share sheet:</p>
+              <ol className="text-xs text-blue-700 space-y-1 pl-4 list-decimal">
+                <li>Open the <strong>Shortcuts</strong> app on your iPhone</li>
+                <li>Tap <strong>+</strong> → name it "Clip to Lia's OS"</li>
+                <li>Tap <strong>"Receives"</strong> at the top → turn on <strong>URLs</strong> and <strong>Text</strong></li>
+                <li>Add action: <strong>"Open URLs"</strong></li>
+                <li>Set the URL to:<br/>
+                  <code className="text-[10px] bg-blue-100 px-1.5 py-0.5 rounded break-all block mt-1">
+                    {window.location.origin + window.location.pathname}?url=[Shortcut Input]
+                  </code>
+                </li>
+                <li>Tap <strong>Done</strong> → it now appears in your Share Sheet!</li>
+              </ol>
+            </div>
+
+            {/* Desktop bookmarklet */}
+            <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-semibold">Desktop: Bookmarklet</p>
+              <p className="text-xs text-dim">Drag this to your bookmarks bar:</p>
+              <a href={"javascript:void(window.open('" + window.location.origin + window.location.pathname + "?title='+encodeURIComponent(document.title)+'&url='+encodeURIComponent(location.href)+'&text='+encodeURIComponent(window.getSelection().toString()),'_self'))"}
+                className="inline-block px-4 py-2.5 bg-accent text-white text-xs rounded-lg font-medium cursor-grab"
+                onClick={e => e.preventDefault()}>
+                📎 Clip to Lia's OS
+              </a>
+            </div>
           </div>
 
           {/* Rules list */}
@@ -1025,7 +1052,7 @@ function SyncIndicator() {
 }
 
 // ─── Header ───
-function Header({ onOpenSettings }) {
+function Header({ onOpenSettings, onClipFromClipboard }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   return (
     <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card sticky top-0 z-30">
@@ -1035,6 +1062,10 @@ function Header({ onOpenSettings }) {
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
         <SyncIndicator />
+        <button onClick={onClipFromClipboard}
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-accent/10 hover:bg-accent/20 flex items-center justify-center text-sm transition-colors" title="Clip from clipboard">
+          📎
+        </button>
         <span className="text-dim text-sm hidden md:block">{today}</span>
         <DataActions onOpenSettings={onOpenSettings} />
       </div>
@@ -3001,6 +3032,41 @@ function App() {
     }
   };
 
+  // ─── Clip from clipboard (iOS workaround) ───
+  const handleClipFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        alert('Nothing in your clipboard. Copy a URL or text first, then tap 📎.');
+        return;
+      }
+      // Try to detect if it's a URL
+      const trimmed = text.trim();
+      let clipUrl = '';
+      let clipTitle = '';
+      let clipText = '';
+      try {
+        const parsed = new URL(trimmed);
+        clipUrl = trimmed;
+        clipTitle = parsed.hostname.replace('www.', '');
+      } catch {
+        // Not a URL — treat as text
+        clipText = trimmed;
+        clipTitle = trimmed.slice(0, 60) + (trimmed.length > 60 ? '...' : '');
+      }
+      const suggestedDomain = classifyClip(clipTitle, clipText, clipUrl, settings.clipRules);
+      setPendingClip({
+        title: clipTitle,
+        text: clipText,
+        url: clipUrl,
+        suggestedDomain,
+      });
+    } catch (err) {
+      // Clipboard permission denied
+      alert('Clipboard access denied. On iOS, make sure you\'re using HTTPS and tap "Paste" when prompted.');
+    }
+  };
+
   const openSettings = (tab = 'tags') => {
     setSettingsTab(tab);
     setSettingsOpen(true);
@@ -3019,7 +3085,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <Header onOpenSettings={() => openSettings('tags')} />
+      <Header onOpenSettings={() => openSettings('tags')} onClipFromClipboard={handleClipFromClipboard} />
       <NavBar active={activeBoard} onChange={setActiveBoard} />
       <main className="pb-20">
         {renderBoard()}
