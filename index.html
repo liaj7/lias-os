@@ -1,0 +1,2343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#F5F3EF">
+<meta name="apple-mobile-web-app-title" content="Lia's OS">
+<title>Lia's OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        bg: '#F5F3EF',
+        card: '#FFFFFF',
+        border: '#E5DFD5',
+        text: '#37352F',
+        dim: '#9B9488',
+        accent: '#7C5CFC',
+        'accent-hover': '#6B4AE6',
+      },
+      fontFamily: {
+        sans: ['DM Sans', 'Noto Sans KR', 'sans-serif'],
+      }
+    }
+  }
+}
+</script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #F5F3EF; color: #37352F; font-family: 'DM Sans', 'Noto Sans KR', sans-serif; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D5CFC5; border-radius: 3px; }
+  input, textarea, select { font-family: inherit; color: inherit; }
+  .fade-in { animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .progress-fill { transition: width 0.6s ease; }
+  /* Rich editor styles */
+  .rich-editor:empty:before { content: attr(data-placeholder); color: #9B9488; pointer-events: none; }
+  .rich-editor h2 { font-size: 1.15rem; font-weight: 600; margin: 0.5em 0 0.25em; }
+  .rich-editor h3 { font-size: 0.95rem; font-weight: 600; margin: 0.4em 0 0.2em; color: #7C7872; }
+  .rich-editor p { margin: 0.2em 0; }
+  .rich-editor ul, .rich-editor ol { padding-left: 1.5em; margin: 0.3em 0; }
+  .rich-editor li { margin: 0.15em 0; }
+  .rich-editor b, .rich-editor strong { color: #1A1A1A; }
+  .rich-editor i, .rich-editor em { color: #7C5CFC; }
+  .rich-editor s { color: #9B9488; text-decoration: line-through; }
+  /* Card shadow for depth on light bg */
+  .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-type="module">
+const { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } = React;
+
+// ─── localStorage Hook ───
+function useLocalStorage(key, defaultValue) {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored ? JSON.parse(stored) : defaultValue;
+    } catch { return defaultValue; }
+  });
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+  return [value, setValue];
+}
+
+// ─── ID Generator ───
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// ─── Date Helpers ───
+const toLocalISO = (d) => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
+const todayISO = () => toLocalISO(new Date());
+const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const dayName = (d) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' });
+const dayNum = (d) => new Date(d).getDate();
+const getMonthYear = () => new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+// ─── Default Data ───
+const DEFAULT_SETTINGS = {
+  tags: [
+    { id: 't1', label: '📋 To-Do Now', color: '#EF4444' },
+    { id: 't2', label: '📌 To-Do Later', color: '#F97316' },
+    { id: 't3', label: '💡 Idea', color: '#EAB308' },
+    { id: 't4', label: '🐦 Twitter', color: '#3B82F6' },
+    { id: 't5', label: '🎵 TikTok', color: '#EC4899' },
+    { id: 't6', label: '📚 Crypto', color: '#8B5CF6' },
+    { id: 't7', label: '📈 Marketing', color: '#22C55E' },
+    { id: 't8', label: '🧠 Thought', color: '#6B7280' },
+    { id: 't9', label: '🏃 Health', color: '#10B981' },
+    { id: 't10', label: '📝 Errand', color: '#92400E' },
+    { id: 't11', label: '💰 Finance', color: '#F97316' },
+    { id: 't12', label: '❓ Unsorted', color: '#52525B' },
+  ],
+  areas: [
+    { name: 'Crypto', color: '#8B5CF6', emoji: '📚' },
+    { name: 'Content', color: '#EC4899', emoji: '✨' },
+    { name: 'AI', color: '#F59E0B', emoji: '🤖' },
+    { name: 'Career', color: '#3B82F6', emoji: '💼' },
+    { name: 'Health', color: '#10B981', emoji: '🏃' },
+    { name: 'Marketing', color: '#F97316', emoji: '📈' },
+    { name: 'Errand', color: '#6B7280', emoji: '📝' },
+    { name: 'Finance', color: '#A78BFA', emoji: '💰' },
+  ],
+  progressAreas: ['Crypto', 'Content', 'AI'],
+  progressTargets: { Crypto: 10, Content: 10, AI: 10 },
+  learningDomains: ['Crypto', 'Marketing', 'AI & Tech', 'Books', '경제/시사', 'Personal Growth'],
+  spendingCategories: ['Food', 'Transport', 'Coffee', 'Shopping', 'Tech', 'Health', 'Learning', 'Entertainment', 'Other'],
+  goalMonth: 'March 2026',
+  goalSections: [
+    { name: 'Health', emoji: '🏃', color: '#10B981' },
+    { name: 'Career', emoji: '💼', color: '#3B82F6' },
+    { name: 'Crypto', emoji: '📚', color: '#8B5CF6' },
+    { name: 'Content', emoji: '✨', color: '#EC4899' },
+    { name: 'AI', emoji: '🤖', color: '#F59E0B' },
+  ],
+};
+
+const DEFAULT_DATA = {
+  events: [
+    { id: uid(), title: 'Team sync call', date: todayISO(), time: '10:00', color: '#3B82F6' },
+    { id: uid(), title: 'Yoga class', date: todayISO(), time: '18:00', color: '#10B981' },
+  ],
+  stickyNotes: {
+    Crypto: [
+      { id: uid(), text: 'Look into Arbitrum vs Optimism gas comparison', color: '#8B5CF6', createdAt: todayISO() },
+      { id: uid(), text: 'DeFi = Decentralized Finance. No middlemen.', color: '#8B5CF6', createdAt: todayISO() },
+    ],
+    Marketing: [
+      { id: uid(), text: 'Retargeting ads convert 70% better', color: '#F97316', createdAt: todayISO() },
+    ],
+  },
+  dumps: [],
+  tasks: [
+    { id: uid(), title: 'Research gas fees on Ethereum', status: 'active', area: 'Crypto', priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: 'Read Ch.4 of Read Write Own', status: 'active', area: 'Crypto', priority: 'When I Can', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: 'Write Twitter thread about DeFi basics', status: 'active', area: 'Content', priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: "Film 'day in my life Bangkok' TikTok", status: 'parked', area: 'Content', priority: 'When I Can', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: 'Apply to 3 Web3 marketing roles', status: 'active', area: 'Career', priority: 'Urgent', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: 'Set up Claude Code MCP', status: 'parked', area: 'AI', priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: 'Morning yoga routine', status: 'active', area: 'Health', priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+    { id: uid(), title: 'Pay Naver subscription', status: 'active', area: 'Errand', priority: 'Urgent', notes: '', learnings: '', doneDate: null, createdAt: todayISO() },
+  ],
+  goals: {
+    Health: ['Exercise 4x/week', 'Fix ankle rehab routine', ''],
+    Career: ['Land Web3 growth role', 'Follow up with Sherlock', ''],
+    Crypto: ['Finish Read Write Own', 'Buy first crypto', ''],
+    Content: ['Post 3 tweets/week', '1 TikTok/week', ''],
+    AI: ['Build personal OS v1', ''],
+  },
+  contentPipeline: [
+    { id: uid(), title: 'Why I moved to Bangkok for Web3', platform: 'TikTok', status: 'Raw Idea', hook: '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() },
+    { id: uid(), title: 'DeFi explained in 60 seconds', platform: 'Twitter', status: 'In Production', hook: '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() },
+    { id: uid(), title: 'My crypto learning journey', platform: 'Twitter', status: 'Published', hook: '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() },
+  ],
+  references: [
+    { id: uid(), title: '@cryptowendy style', platform: 'Twitter', type: 'Influencer', link: '', notes: '', tags: [], color: '#3B82F6' },
+    { id: uid(), title: 'Talking head + text overlay', platform: 'TikTok', type: 'Format Idea', link: '', notes: '', tags: [], color: '#EC4899' },
+    { id: uid(), title: 'Thread → carousel repurpose', platform: 'Both', type: 'Format Idea', link: '', notes: '', tags: [], color: '#8B5CF6' },
+    { id: uid(), title: 'Lo-fi vlog aesthetic', platform: 'TikTok', type: 'Mood Board', link: '', notes: '', tags: [], color: '#EC4899' },
+  ],
+  learnings: [
+    { id: uid(), title: 'Gas fees = transaction costs on Ethereum', domain: 'Crypto', source: 'Article', sourceName: 'Ethereum docs', takeaways: 'Gas fees are paid in ETH. They vary based on network congestion. Layer 2s reduce fees significantly.', contentPotential: true, fromTask: null, date: todayISO() },
+    { id: uid(), title: 'GA4 event-based tracking model', domain: 'Marketing', source: 'Article', sourceName: 'Google Analytics Academy', takeaways: 'GA4 uses events instead of sessions. Every interaction is an event. Custom events need to be configured.', contentPotential: false, fromTask: null, date: todayISO() },
+  ],
+  fixedExpenses: [
+    { id: uid(), name: '언니 송금', amount: 200, currency: 'USD', type: 'Monthly' },
+    { id: uid(), name: 'Naver Plus', amount: 4900, currency: 'KRW', type: 'Subscription' },
+    { id: uid(), name: 'SKT', amount: 55000, currency: 'KRW', type: 'Subscription' },
+    { id: uid(), name: 'Claude Pro', amount: 20, currency: 'USD', type: 'Subscription' },
+    { id: uid(), name: '대출이자', amount: 150000, currency: 'KRW', type: 'Monthly' },
+  ],
+  expenses: [
+    { id: uid(), item: 'Pad Thai lunch', amount: 80, currency: 'THB', category: 'Food', date: todayISO() },
+    { id: uid(), item: 'BTS to Siam', amount: 44, currency: 'THB', category: 'Transport', date: todayISO() },
+    { id: uid(), item: 'Coffee at Roots', amount: 150, currency: 'THB', category: 'Coffee', date: todayISO() },
+    { id: uid(), item: 'Yoga class', amount: 350, currency: 'THB', category: 'Health', date: todayISO() },
+    { id: uid(), item: 'Grocery', amount: 520, currency: 'THB', category: 'Food', date: todayISO() },
+    { id: uid(), item: 'Book: Tokenomics', amount: 450, currency: 'THB', category: 'Learning', date: todayISO() },
+  ],
+};
+
+// ─── Data Context ───
+const DataContext = createContext();
+
+function DataProvider({ children }) {
+  const [settings, setSettings] = useLocalStorage('liaos_settings', DEFAULT_SETTINGS);
+  const [data, setData] = useLocalStorage('liaos_data', DEFAULT_DATA);
+
+  const updateData = useCallback((key, updater) => {
+    setData(prev => ({
+      ...prev,
+      [key]: typeof updater === 'function' ? updater(prev[key]) : updater,
+    }));
+  }, [setData]);
+
+  const updateSettings = useCallback((key, value) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }, [setSettings]);
+
+  const getAreaColor = useCallback((areaName) => {
+    const area = settings.areas.find(a => a.name === areaName);
+    return area?.color || '#6B7280';
+  }, [settings.areas]);
+
+  const getAreaEmoji = useCallback((areaName) => {
+    const area = settings.areas.find(a => a.name === areaName);
+    return area?.emoji || '📋';
+  }, [settings.areas]);
+
+  const value = useMemo(() => ({
+    settings, setSettings, updateSettings,
+    data, setData, updateData,
+    getAreaColor, getAreaEmoji,
+  }), [settings, data]);
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+}
+
+function useData() { return useContext(DataContext); }
+
+// ─── Shared: complete task with learning cross-link ───
+function useCompleteTask() {
+  const { data, updateData } = useData();
+  return (taskId) => {
+    const task = data.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    updateData('tasks', prev => prev.map(t => t.id === taskId ? { ...t, status: 'done', doneDate: todayISO() } : t));
+    // Auto-create learning entry if notes or learnings exist and area qualifies
+    const learningAreas = ['Crypto', 'Content', 'AI', 'Marketing', 'Health', 'Career', 'Finance'];
+    const memo = (task.learnings || '').trim() || (task.notes || '').trim();
+    if (memo && learningAreas.includes(task.area)) {
+      const domainMap = { Crypto: 'Crypto', Content: 'Marketing', AI: 'AI & Tech', Marketing: 'Marketing', Health: 'Personal Growth', Career: 'Personal Growth', Finance: '경제/시사' };
+      const entry = {
+        id: uid(), title: task.title, domain: domainMap[task.area] || task.area,
+        source: 'Hands-on', sourceName: '', takeaways: task.learnings || task.notes,
+        contentPotential: false, fromTask: task.title, date: todayISO(),
+      };
+      updateData('learnings', prev => [entry, ...prev]);
+    }
+  };
+}
+
+// ─── Reusable: EditableText ───
+function EditableText({ value, onChange, className = '', placeholder = 'Click to edit...', tag = 'span', multiline = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef(null);
+
+  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
+
+  const save = () => {
+    setEditing(false);
+    if (draft !== value) onChange(draft);
+  };
+
+  if (editing) {
+    if (multiline) {
+      return <textarea ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)} onBlur={save} onKeyDown={e => { if (e.key === 'Escape') { setDraft(value); setEditing(false); }}} className={`bg-transparent border border-accent/50 rounded px-2 py-1 outline-none text-text w-full resize-none ${className}`} rows={3} />;
+    }
+    return <input ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)} onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setDraft(value); setEditing(false); }}} className={`bg-transparent border border-accent/50 rounded px-2 py-1 outline-none text-text ${className}`} />;
+  }
+
+  return React.createElement(tag, {
+    onClick: () => setEditing(true),
+    className: `cursor-pointer hover:bg-black/5 rounded px-1 py-0.5 transition-colors ${!value ? 'text-dim italic' : ''} ${className}`,
+  }, value || placeholder);
+}
+
+// ─── Reusable: Tag Pill ───
+function TagPill({ label, color, selected, onClick, small = false }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border transition-all whitespace-nowrap ${small ? 'px-2 py-0.5 text-xs' : 'px-3 py-1.5 text-sm'} ${selected ? 'bg-opacity-20' : 'bg-transparent hover:bg-black/5'}`}
+      style={{
+        borderColor: selected ? color : '#E5DFD5',
+        backgroundColor: selected ? color + '22' : 'transparent',
+        color: selected ? color : '#9B9488',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── Reusable: Modal ───
+function Modal({ open, onClose, title, children, wide = false }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-20 px-4" onClick={onClose}>
+      <div className={`bg-card border border-border rounded-xl p-6 w-full ${wide ? 'max-w-2xl' : 'max-w-md'} max-h-[80vh] overflow-y-auto fade-in`} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button onClick={onClose} className="text-dim hover:text-text text-xl leading-none">&times;</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings Panel ───
+function SettingsPanel({ open, onClose, initialTab }) {
+  const { settings, updateSettings } = useData();
+  const [activeTab, setActiveTab] = useState(initialTab || 'tags');
+  useEffect(() => { if (initialTab && open) setActiveTab(initialTab); }, [initialTab, open]);
+  const [newTag, setNewTag] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#8B5CF6');
+  const [newArea, setNewArea] = useState('');
+  const [newAreaColor, setNewAreaColor] = useState('#8B5CF6');
+  const [newAreaEmoji, setNewAreaEmoji] = useState('📋');
+  const [newDomain, setNewDomain] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+
+  const tabs = [
+    { key: 'tags', label: 'Tags' },
+    { key: 'areas', label: 'Areas' },
+    { key: 'domains', label: 'Learning Domains' },
+    { key: 'categories', label: 'Spending Categories' },
+    { key: 'progress', label: 'Progress Bars' },
+  ];
+
+  return (
+    <Modal open={open} onClose={onClose} title="Settings" wide>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${activeTab === t.key ? 'bg-accent text-white' : 'bg-black/5 text-dim hover:text-text'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'tags' && (
+        <div className="space-y-2">
+          {settings.tags.map((tag, i) => (
+            <div key={tag.id} className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+              <input type="color" value={tag.color} onChange={e => {
+                const updated = [...settings.tags];
+                updated[i] = { ...tag, color: e.target.value };
+                updateSettings('tags', updated);
+              }} className="w-6 h-6 rounded cursor-pointer bg-transparent border-0" />
+              <EditableText value={tag.label} onChange={v => {
+                const updated = [...settings.tags];
+                updated[i] = { ...tag, label: v };
+                updateSettings('tags', updated);
+              }} className="flex-1" />
+              <button onClick={() => updateSettings('tags', settings.tags.filter((_, j) => j !== i))}
+                className="text-dim hover:text-red-400 text-sm">✕</button>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-3">
+            <input type="color" value={newTagColor} onChange={e => setNewTagColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
+            <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="New tag name..." className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+            <button onClick={() => { if (newTag.trim()) { updateSettings('tags', [...settings.tags, { id: uid(), label: newTag.trim(), color: newTagColor }]); setNewTag(''); }}}
+              className="bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded-lg text-sm">Add</button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'areas' && (
+        <div className="space-y-2">
+          {settings.areas.map((area, i) => (
+            <div key={i} className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+              <input type="color" value={area.color} onChange={e => {
+                const updated = [...settings.areas];
+                updated[i] = { ...area, color: e.target.value };
+                updateSettings('areas', updated);
+              }} className="w-6 h-6 rounded cursor-pointer bg-transparent border-0" />
+              <EditableText value={area.emoji} onChange={v => {
+                const updated = [...settings.areas];
+                updated[i] = { ...area, emoji: v };
+                updateSettings('areas', updated);
+              }} className="w-8 text-center" />
+              <EditableText value={area.name} onChange={v => {
+                const updated = [...settings.areas];
+                updated[i] = { ...area, name: v };
+                updateSettings('areas', updated);
+              }} className="flex-1" />
+              <button onClick={() => updateSettings('areas', settings.areas.filter((_, j) => j !== i))}
+                className="text-dim hover:text-red-400 text-sm">✕</button>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-3">
+            <input type="color" value={newAreaColor} onChange={e => setNewAreaColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer bg-transparent border-0" />
+            <input value={newAreaEmoji} onChange={e => setNewAreaEmoji(e.target.value)} className="w-10 bg-black/5 border border-border rounded-lg px-2 py-1.5 text-sm text-center text-text outline-none" />
+            <input value={newArea} onChange={e => setNewArea(e.target.value)} placeholder="New area name..." className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+            <button onClick={() => { if (newArea.trim()) { updateSettings('areas', [...settings.areas, { name: newArea.trim(), color: newAreaColor, emoji: newAreaEmoji }]); setNewArea(''); }}}
+              className="bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded-lg text-sm">Add</button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'domains' && (
+        <div className="space-y-2">
+          {settings.learningDomains.map((domain, i) => (
+            <div key={i} className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+              <EditableText value={domain} onChange={v => {
+                const updated = [...settings.learningDomains];
+                updated[i] = v;
+                updateSettings('learningDomains', updated);
+              }} className="flex-1" />
+              <button onClick={() => updateSettings('learningDomains', settings.learningDomains.filter((_, j) => j !== i))}
+                className="text-dim hover:text-red-400 text-sm">✕</button>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-3">
+            <input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="New domain..." className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+            <button onClick={() => { if (newDomain.trim()) { updateSettings('learningDomains', [...settings.learningDomains, newDomain.trim()]); setNewDomain(''); }}}
+              className="bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded-lg text-sm">Add</button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'categories' && (
+        <div className="space-y-2">
+          {settings.spendingCategories.map((cat, i) => (
+            <div key={i} className="flex items-center gap-2 bg-black/5 rounded-lg px-3 py-2">
+              <EditableText value={cat} onChange={v => {
+                const updated = [...settings.spendingCategories];
+                updated[i] = v;
+                updateSettings('spendingCategories', updated);
+              }} className="flex-1" />
+              <button onClick={() => updateSettings('spendingCategories', settings.spendingCategories.filter((_, j) => j !== i))}
+                className="text-dim hover:text-red-400 text-sm">✕</button>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-3">
+            <input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="New category..." className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+            <button onClick={() => { if (newCategory.trim()) { updateSettings('spendingCategories', [...settings.spendingCategories, newCategory.trim()]); setNewCategory(''); }}}
+              className="bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded-lg text-sm">Add</button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'progress' && (
+        <div className="space-y-3">
+          <p className="text-dim text-sm mb-2">Choose which areas show progress bars and set monthly targets.</p>
+          {settings.areas.map((area) => {
+            const isTracked = settings.progressAreas.includes(area.name);
+            const target = settings.progressTargets[area.name] || 10;
+            return (
+              <div key={area.name} className="flex items-center gap-3 bg-black/5 rounded-lg px-3 py-2">
+                <button onClick={() => {
+                  if (isTracked) {
+                    updateSettings('progressAreas', settings.progressAreas.filter(a => a !== area.name));
+                  } else {
+                    updateSettings('progressAreas', [...settings.progressAreas, area.name]);
+                    if (!settings.progressTargets[area.name]) {
+                      updateSettings('progressTargets', { ...settings.progressTargets, [area.name]: 10 });
+                    }
+                  }
+                }} className={`w-5 h-5 rounded border-2 flex items-center justify-center text-xs ${isTracked ? 'border-accent bg-accent text-white' : 'border-border'}`}>
+                  {isTracked && '✓'}
+                </button>
+                <span style={{ color: area.color }}>{area.emoji} {area.name}</span>
+                {isTracked && (
+                  <div className="flex items-center gap-1 ml-auto">
+                    <span className="text-dim text-xs">Target:</span>
+                    <input type="number" value={target} min={1} onChange={e => updateSettings('progressTargets', { ...settings.progressTargets, [area.name]: parseInt(e.target.value) || 1 })}
+                      className="w-14 bg-black/5 border border-border rounded px-2 py-1 text-sm text-text text-center outline-none" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ─── Data Export / Import ───
+function DataActions({ onOpenSettings }) {
+  const { settings, data, setSettings, setData } = useData();
+  const [showMenu, setShowMenu] = useState(false);
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify({ settings, data }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `liaos-backup-${todayISO()}.json`; a.click();
+    URL.revokeObjectURL(url);
+    setShowMenu(false);
+  };
+
+  const importData = () => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          if (parsed.settings) setSettings(parsed.settings);
+          if (parsed.data) setData(parsed.data);
+          setShowMenu(false);
+        } catch { alert('Invalid file'); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  return (
+    <div className="relative">
+      <button onClick={() => setShowMenu(!showMenu)}
+        className="w-8 h-8 rounded-lg bg-black/5 hover:bg-black/10 flex items-center justify-center text-dim hover:text-text transition-colors" title="More">⋯</button>
+      {showMenu && (
+        <div className="absolute right-0 top-10 bg-card border border-border rounded-xl py-1 w-44 z-40 shadow-xl fade-in">
+          <button onClick={() => { onOpenSettings('tags'); setShowMenu(false); }} className="w-full text-left px-4 py-2 text-sm text-text hover:bg-black/5">⚙️ Settings</button>
+          <button onClick={exportData} className="w-full text-left px-4 py-2 text-sm text-text hover:bg-black/5">📥 Export data</button>
+          <button onClick={importData} className="w-full text-left px-4 py-2 text-sm text-text hover:bg-black/5">📤 Import data</button>
+          <div className="border-t border-border my-1" />
+          <button onClick={() => { if (confirm('This will reset ALL data to defaults. Are you sure?')) { localStorage.removeItem('liaos_settings'); localStorage.removeItem('liaos_data'); location.reload(); } }}
+            className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-black/5">🔄 Reset to defaults</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Header ───
+function Header({ onOpenSettings }) {
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  return (
+    <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-accent to-purple-400 flex items-center justify-center text-base sm:text-lg">🧠</div>
+        <span className="text-lg sm:text-xl font-semibold tracking-tight">Lia's OS</span>
+      </div>
+      <div className="flex items-center gap-2 sm:gap-4">
+        <span className="text-dim text-sm hidden md:block">{today}</span>
+        <DataActions onOpenSettings={onOpenSettings} />
+      </div>
+    </header>
+  );
+}
+
+// ─── Nav Bar ───
+function NavBar({ active, onChange }) {
+  const boards = [
+    { key: 'braindump', icon: '🧠', label: 'Brain Dump' },
+    { key: 'command', icon: '📊', label: 'Command' },
+    { key: 'content', icon: '✨', label: 'Content' },
+    { key: 'learning', icon: '📚', label: 'Learning' },
+    { key: 'finance', icon: '💰', label: 'Finance' },
+  ];
+  return (
+    <nav className="flex border-b border-border overflow-x-auto scrollbar-hide">
+      {boards.map(b => (
+        <button key={b.key} onClick={() => onChange(b.key)}
+          className={`flex-1 sm:flex-none px-3 sm:px-5 py-3 text-xs sm:text-sm font-medium whitespace-nowrap transition-colors text-center ${active === b.key ? 'bg-white text-text border-b-2 border-accent' : 'text-dim hover:text-text hover:bg-black/5'}`}>
+          <span className="sm:hidden">{b.icon}</span>
+          <span className="hidden sm:inline">{b.icon} {b.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// ─── Board 1: Brain Dump ───
+
+// ─── Full Monthly Calendar ───
+function MonthlyCalendar() {
+  const { data, updateData } = useData();
+  const [viewDate, setViewDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [addingEvent, setAddingEvent] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: '', time: '', color: '#8B5CF6' });
+  const [editingEvent, setEditingEvent] = useState(null);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const todayStr = todayISO();
+
+  const monthLabel = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthDays = new Date(year, month, 0).getDate();
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+  const goToday = () => setViewDate(new Date());
+
+  // Build calendar grid (6 rows x 7 cols)
+  const cells = [];
+  // Previous month trailing days
+  for (let i = firstDay - 1; i >= 0; i--) {
+    const day = prevMonthDays - i;
+    const d = new Date(year, month - 1, day);
+    cells.push({ date: d, iso: toLocalISO(d), inMonth: false, day });
+  }
+  // Current month
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    cells.push({ date, iso: toLocalISO(date), inMonth: true, day: d });
+  }
+  // Next month leading days
+  const remaining = 42 - cells.length;
+  for (let d = 1; d <= remaining; d++) {
+    const date = new Date(year, month + 1, d);
+    cells.push({ date, iso: toLocalISO(date), inMonth: false, day: d });
+  }
+
+  const getEventsForDate = (iso) => (data.events || []).filter(e => e.date === iso);
+
+  const handleAddEvent = () => {
+    if (!newEvent.title.trim() || !selectedDate) return;
+    const event = { id: uid(), title: newEvent.title.trim(), date: selectedDate, time: newEvent.time || '', color: newEvent.color };
+    updateData('events', prev => [...(prev || []), event]);
+    setNewEvent({ title: '', time: '', color: '#8B5CF6' });
+    setAddingEvent(false);
+  };
+
+  const handleDeleteEvent = (eventId) => {
+    updateData('events', prev => (prev || []).filter(e => e.id !== eventId));
+  };
+
+  const handleUpdateEvent = (eventId, changes) => {
+    updateData('events', prev => (prev || []).map(e => e.id === eventId ? { ...e, ...changes } : e));
+    setEditingEvent(null);
+  };
+
+  const selectedEvents = selectedDate ? getEventsForDate(selectedDate) : [];
+  const colorOptions = ['#8B5CF6', '#3B82F6', '#10B981', '#EC4899', '#F59E0B', '#EF4444', '#F97316'];
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 mb-4">
+      {/* Month header */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={prevMonth} className="w-8 h-8 rounded-lg bg-black/5 hover:bg-black/10 flex items-center justify-center text-dim hover:text-text">&larr;</button>
+        <div className="flex items-center gap-3">
+          <h3 className="text-base font-semibold">{monthLabel}</h3>
+          <button onClick={goToday} className="text-xs px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-dim hover:text-text">Today</button>
+        </div>
+        <button onClick={nextMonth} className="w-8 h-8 rounded-lg bg-black/5 hover:bg-black/10 flex items-center justify-center text-dim hover:text-text">&rarr;</button>
+      </div>
+
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className="text-center text-xs text-dim font-medium py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7 gap-px">
+        {cells.map((cell, i) => {
+          const isToday = cell.iso === todayStr;
+          const isSelected = cell.iso === selectedDate;
+          const dayEvents = getEventsForDate(cell.iso);
+          return (
+            <button key={i} onClick={() => setSelectedDate(cell.iso === selectedDate ? null : cell.iso)}
+              className={`relative p-1 min-h-[48px] rounded-lg text-left transition-all flex flex-col items-center
+                ${cell.inMonth ? 'hover:bg-black/5' : 'opacity-30'}
+                ${isSelected ? 'bg-accent/15 ring-1 ring-accent' : ''}
+              `}>
+              <span className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full
+                ${isToday ? 'bg-accent text-white' : cell.inMonth ? 'text-text' : 'text-dim'}
+              `}>{cell.day}</span>
+              {dayEvents.length > 0 && (
+                <div className="flex gap-0.5 mt-0.5">
+                  {dayEvents.slice(0, 3).map(ev => (
+                    <div key={ev.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ev.color }} />
+                  ))}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected date panel */}
+      {selectedDate && (
+        <div className="mt-4 pt-4 border-t border-border fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium">
+              {new Date(selectedDate + 'T12:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            </h4>
+            <button onClick={() => { setAddingEvent(true); setEditingEvent(null); }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add Event</button>
+          </div>
+
+          {/* Add event form */}
+          {addingEvent && (
+            <div className="bg-black/5 rounded-lg p-3 mb-3 space-y-2 fade-in">
+              <input value={newEvent.title} onChange={e => setNewEvent(p => ({ ...p, title: e.target.value }))}
+                placeholder="Event title..." className="w-full bg-transparent border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50"
+                onKeyDown={e => { if (e.key === 'Enter') handleAddEvent(); if (e.key === 'Escape') setAddingEvent(false); }}
+                autoFocus />
+              <div className="flex gap-2 items-center">
+                <input type="time" value={newEvent.time} onChange={e => setNewEvent(p => ({ ...p, time: e.target.value }))}
+                  className="bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+                <div className="flex gap-1">
+                  {colorOptions.map(c => (
+                    <button key={c} onClick={() => setNewEvent(p => ({ ...p, color: c }))}
+                      className={`w-5 h-5 rounded-full transition-transform ${newEvent.color === c ? 'scale-125 ring-2 ring-white/30' : 'hover:scale-110'}`}
+                      style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+                <div className="flex gap-1 ml-auto">
+                  <button onClick={() => setAddingEvent(false)} className="text-xs px-2 py-1 rounded text-dim hover:text-text">Cancel</button>
+                  <button onClick={handleAddEvent} className="text-xs px-3 py-1 rounded bg-accent hover:bg-accent-hover text-white">Save</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Events list */}
+          {selectedEvents.length === 0 && !addingEvent && (
+            <p className="text-dim text-xs">No events. Click "+ Add Event" to create one.</p>
+          )}
+          {selectedEvents.sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(ev => (
+            <div key={ev.id} className="flex items-center gap-2 py-2 group">
+              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ev.color }} />
+              {editingEvent === ev.id ? (
+                <div className="flex-1 flex gap-2 items-center">
+                  <input defaultValue={ev.title} onBlur={e => handleUpdateEvent(ev.id, { title: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') handleUpdateEvent(ev.id, { title: e.target.value }); if (e.key === 'Escape') setEditingEvent(null); }}
+                    className="flex-1 bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none" autoFocus />
+                  <input type="time" defaultValue={ev.time} onChange={e => handleUpdateEvent(ev.id, { time: e.target.value })}
+                    className="bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none w-24" />
+                </div>
+              ) : (
+                <React.Fragment>
+                  <span className="text-sm flex-1 cursor-pointer hover:bg-black/5 rounded px-1" onClick={() => setEditingEvent(ev.id)}>{ev.title}</span>
+                  {ev.time && <span className="text-xs text-dim font-mono">{ev.time}</span>}
+                </React.Fragment>
+              )}
+              <button onClick={() => handleDeleteEvent(ev.id)}
+                className="text-dim hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActiveTasksPreview() {
+  const { data, updateData, settings, getAreaColor } = useData();
+  const completeTask = useCompleteTask();
+  const activeTasks = data.tasks.filter(t => t.status === 'active');
+  const [expandedTask, setExpandedTask] = useState(null);
+
+  if (activeTasks.length === 0) return null;
+
+  const updateTask = (taskId, changes) => {
+    updateData('tasks', prev => prev.map(t => t.id === taskId ? { ...t, ...changes } : t));
+  };
+  const deleteTask = (taskId) => {
+    updateData('tasks', prev => prev.filter(t => t.id !== taskId));
+  };
+  const parkTask = (taskId) => {
+    updateData('tasks', prev => prev.map(t => t.id === taskId ? { ...t, status: 'parked' } : t));
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-dim">⚡ Active Tasks <span className="text-xs bg-black/10 px-1.5 py-0.5 rounded-full ml-1">{activeTasks.length}</span></h3>
+      </div>
+      <div className="space-y-1">
+        {activeTasks.map(task => (
+          <div key={task.id}>
+            <div className="flex items-center gap-2 py-1.5 px-2 rounded-lg group hover:bg-black/5 transition-colors">
+              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getAreaColor(task.area) }} />
+              <span className="text-sm flex-1 truncate cursor-pointer hover:text-accent transition-colors" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
+                {task.title}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/5" style={{ color: getAreaColor(task.area) }}>{task.area}</span>
+              <button onClick={() => parkTask(task.id)} title="Park" className="text-dim hover:text-yellow-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">🕐</button>
+              <button onClick={() => deleteTask(task.id)} title="Delete" className="text-dim hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+            </div>
+            {expandedTask === task.id && (
+              <div className="ml-4 mt-1 mb-2 p-3 bg-black/5 rounded-lg space-y-2 fade-in border border-border/50">
+                <input value={task.title} onChange={e => updateTask(task.id, { title: e.target.value })}
+                  className="w-full bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50" />
+                <div className="flex gap-2">
+                  <select value={task.area} onChange={e => updateTask(task.id, { area: e.target.value })}
+                    className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-text outline-none">
+                    {settings.areas.map(a => <option key={a.name} value={a.name}>{a.emoji} {a.name}</option>)}
+                  </select>
+                  <select value={task.priority} onChange={e => updateTask(task.id, { priority: e.target.value })}
+                    className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-xs text-text outline-none">
+                    <option value="Urgent">Urgent</option><option value="Important">Important</option><option value="When I Can">When I Can</option>
+                  </select>
+                </div>
+                <textarea value={task.notes || ''} onChange={e => updateTask(task.id, { notes: e.target.value })}
+                  className="w-full bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none resize-none focus:border-accent/50" rows={2} placeholder="Notes / what I did..." />
+                <textarea value={task.learnings || ''} onChange={e => updateTask(task.id, { learnings: e.target.value })}
+                  className="w-full bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none resize-none focus:border-accent/50" rows={2} placeholder="What I learned... (auto-saves to Learning Center)" />
+                <button onClick={() => { completeTask(task.id); setExpandedTask(null); }}
+                  className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                  ✓ Done — Save & Archive
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <QuickAddTask />
+    </div>
+  );
+}
+
+function QuickAddTask() {
+  const { updateData, settings } = useData();
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [area, setArea] = useState(settings.areas[0]?.name || '');
+
+  const handleAdd = () => {
+    if (!title.trim()) return;
+    const newTask = { id: uid(), title: title.trim(), status: 'active', area, priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() };
+    updateData('tasks', prev => [newTask, ...prev]);
+    setTitle('');
+    setAdding(false);
+  };
+
+  if (!adding) {
+    return (
+      <button onClick={() => setAdding(true)} className="w-full mt-2 py-2 text-xs text-dim hover:text-accent border border-dashed border-border hover:border-accent/50 rounded-lg transition-colors">
+        + Add task
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex gap-2 fade-in">
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="New task..."
+        className="flex-1 bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50"
+        onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') setAdding(false); }} autoFocus />
+      <select value={area} onChange={e => setArea(e.target.value)}
+        className="bg-card border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none cursor-pointer">
+        {settings.areas.map(a => <option key={a.name} value={a.name}>{a.emoji} {a.name}</option>)}
+      </select>
+      <button onClick={handleAdd} className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs">Add</button>
+      <button onClick={() => setAdding(false)} className="px-2 py-1.5 text-dim hover:text-text text-xs">✕</button>
+    </div>
+  );
+}
+
+function BrainDump({ onOpenSettings }) {
+  const { data, updateData, settings } = useData();
+  const [input, setInput] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const inputRef = useRef(null);
+
+  const toggleTag = (tagId) => {
+    setSelectedTags(prev => prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]);
+  };
+
+  // Auto-classification hints
+  const getClassificationHints = () => {
+    const hints = [];
+    const tagLabels = selectedTags.map(id => settings.tags.find(t => t.id === id)?.label || '');
+    if (tagLabels.some(l => l.includes('To-Do Now'))) hints.push('→ Will add to active TO-DO list');
+    if (tagLabels.some(l => l.includes('To-Do Later'))) hints.push('→ Will add to Parked list');
+    const hasIdea = tagLabels.some(l => l.includes('Idea'));
+    if (hasIdea && tagLabels.some(l => l.includes('Twitter'))) hints.push('→ Will add to Content Pipeline (Twitter)');
+    if (hasIdea && tagLabels.some(l => l.includes('TikTok'))) hints.push('→ Will add to Content Pipeline (TikTok)');
+    return hints;
+  };
+
+  // Determine area from tags
+  const getAreaFromTags = (tagLabels) => {
+    if (tagLabels.some(l => l.includes('Crypto'))) return 'Crypto';
+    if (tagLabels.some(l => l.includes('Marketing'))) return 'Marketing';
+    if (tagLabels.some(l => l.includes('Health'))) return 'Health';
+    if (tagLabels.some(l => l.includes('Errand'))) return 'Errand';
+    if (tagLabels.some(l => l.includes('Finance'))) return 'Finance';
+    if (tagLabels.some(l => l.includes('Twitter') || l.includes('TikTok'))) return 'Content';
+    return 'Unsorted';
+  };
+
+  const handleSubmit = () => {
+    const text = input.trim();
+    if (!text) return;
+
+    const tagLabels = selectedTags.map(id => settings.tags.find(t => t.id === id)?.label || '');
+    const area = getAreaFromTags(tagLabels);
+    const dumpId = uid();
+
+    // Create dump entry
+    const newDump = { id: dumpId, text, tags: selectedTags, processed: true, createdAt: new Date().toISOString() };
+    updateData('dumps', prev => [newDump, ...prev]);
+
+    // Auto-create task if tagged To-Do
+    if (tagLabels.some(l => l.includes('To-Do Now'))) {
+      const newTask = { id: uid(), title: text, status: 'active', area, priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() };
+      updateData('tasks', prev => [newTask, ...prev]);
+    }
+    if (tagLabels.some(l => l.includes('To-Do Later'))) {
+      const newTask = { id: uid(), title: text, status: 'parked', area, priority: 'When I Can', notes: '', learnings: '', doneDate: null, createdAt: todayISO() };
+      updateData('tasks', prev => [newTask, ...prev]);
+    }
+
+    // Auto-create content pipeline entry
+    const hasIdea = tagLabels.some(l => l.includes('Idea'));
+    if (hasIdea && tagLabels.some(l => l.includes('Twitter'))) {
+      const entry = { id: uid(), title: text, platform: 'Twitter', status: 'Raw Idea', hook: '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() };
+      updateData('contentPipeline', prev => [entry, ...prev]);
+    }
+    if (hasIdea && tagLabels.some(l => l.includes('TikTok'))) {
+      const entry = { id: uid(), title: text, platform: 'TikTok', status: 'Raw Idea', hook: '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() };
+      updateData('contentPipeline', prev => [entry, ...prev]);
+    }
+
+    setInput('');
+    setSelectedTags([]);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const deleteDump = (id) => {
+    updateData('dumps', prev => prev.filter(d => d.id !== id));
+  };
+
+  const hints = getClassificationHints();
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-6">
+      <MonthlyCalendar />
+      <ActiveTasksPreview />
+
+      {/* Dump Input */}
+      <div className="bg-card border border-border rounded-xl p-4 mb-4">
+        <div className="flex gap-3">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="What's on your mind? Dump it here..."
+            className="flex-1 bg-transparent text-text placeholder-dim outline-none resize-none text-base"
+            rows={2}
+          />
+          <button onClick={handleSubmit}
+            className="self-end w-10 h-10 rounded-xl bg-accent hover:bg-accent-hover text-white flex items-center justify-center text-xl font-bold transition-colors flex-shrink-0">
+            +
+          </button>
+        </div>
+
+        {/* Tag Selector */}
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-dim">Tags:</span>
+            <button onClick={() => onOpenSettings('tags')} className="text-xs text-dim hover:text-accent transition-colors">⚙️ edit</button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {settings.tags.map(tag => (
+              <TagPill
+                key={tag.id}
+                label={tag.label}
+                color={tag.color}
+                selected={selectedTags.includes(tag.id)}
+                onClick={() => toggleTag(tag.id)}
+                small
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Classification hints */}
+        {hints.length > 0 && (
+          <div className="mt-2 space-y-0.5">
+            {hints.map((h, i) => (
+              <p key={i} className="text-xs text-accent">{h}</p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Recent Dumps */}
+      <div>
+        <h3 className="text-sm font-medium text-dim mb-3">Recent Dumps</h3>
+        {data.dumps.length === 0 ? (
+          <div className="bg-card border border-border border-dashed rounded-xl p-6 text-center text-dim text-sm">
+            No dumps yet. Type something above and hit + to start.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.dumps.slice(0, 20).map(dump => (
+              <div key={dump.id} className="bg-card border border-border rounded-xl p-3 flex items-start gap-3 group fade-in">
+                <button onClick={() => deleteDump(dump.id)}
+                  className="mt-0.5 w-5 h-5 rounded border border-border text-dim hover:border-red-400 hover:text-red-400 flex items-center justify-center text-xs flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  ✕
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm">{dump.text}</p>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {dump.tags.map(tagId => {
+                      const tag = settings.tags.find(t => t.id === tagId);
+                      if (!tag) return null;
+                      return <span key={tagId} className="text-xs px-2 py-0.5 rounded-full border" style={{ borderColor: tag.color + '66', color: tag.color }}>{tag.label}</span>;
+                    })}
+                  </div>
+                </div>
+                <span className="text-xs text-dim flex-shrink-0 mt-0.5">
+                  {new Date(dump.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Board 2: Command Center ───
+function CommandCenter() {
+  const { data, updateData, settings, getAreaColor, getAreaEmoji } = useData();
+  const [expandedTask, setExpandedTask] = useState(null);
+  const [showDone, setShowDone] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskArea, setNewTaskArea] = useState(settings.areas[0]?.name || '');
+
+  const activeTasks = data.tasks.filter(t => t.status === 'active');
+  const parkedTasks = data.tasks.filter(t => t.status === 'parked');
+  const doneTasks = data.tasks.filter(t => t.status === 'done');
+
+  const updateTask = (taskId, changes) => {
+    updateData('tasks', prev => prev.map(t => t.id === taskId ? { ...t, ...changes } : t));
+  };
+
+  const deleteTask = (taskId) => {
+    updateData('tasks', prev => prev.filter(t => t.id !== taskId));
+  };
+
+  const completeTask = useCompleteTask();
+
+  const restoreTask = (taskId) => {
+    updateTask(taskId, { status: 'active', doneDate: null });
+  };
+
+  const activateTask = (taskId) => {
+    updateTask(taskId, { status: 'active' });
+  };
+
+  const parkTask = (taskId) => {
+    updateTask(taskId, { status: 'parked' });
+  };
+
+  const handleAddTask = () => {
+    if (!newTaskTitle.trim()) return;
+    const t = { id: uid(), title: newTaskTitle.trim(), status: 'active', area: newTaskArea, priority: 'Important', notes: '', learnings: '', doneDate: null, createdAt: todayISO() };
+    updateData('tasks', prev => [t, ...prev]);
+    setNewTaskTitle('');
+    setAddingTask(false);
+  };
+
+  // Progress bars
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      {/* ── Section 1: Tasks ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Active Tasks (3/5 width) */}
+        <div className="lg:col-span-3 bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold flex items-center gap-2">⚡ Active Tasks <span className="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded-full">{activeTasks.length}</span></h3>
+            <button onClick={() => setAddingTask(!addingTask)} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add</button>
+          </div>
+
+          {addingTask && (
+            <div className="flex gap-2 mb-3 fade-in">
+              <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task title..."
+                className="flex-1 bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50"
+                onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); if (e.key === 'Escape') setAddingTask(false); }} autoFocus />
+              <select value={newTaskArea} onChange={e => setNewTaskArea(e.target.value)} className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+                {settings.areas.map(a => <option key={a.name} value={a.name}>{a.emoji} {a.name}</option>)}
+              </select>
+              <button onClick={handleAddTask} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs">Add</button>
+            </div>
+          )}
+
+          {activeTasks.length === 0 && <p className="text-dim text-sm py-4 text-center">No active tasks. Add one or dump something tagged "To-Do Now".</p>}
+
+          <div className="space-y-0.5">
+            {activeTasks.map(task => (
+              <div key={task.id}>
+                <div className="flex items-center gap-2 py-2 px-2 rounded-lg group hover:bg-black/5 transition-colors">
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: getAreaColor(task.area) }} />
+                  <span className="text-sm flex-1 cursor-pointer hover:text-accent transition-colors" onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
+                    {task.title}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full border" style={{ color: getAreaColor(task.area), borderColor: getAreaColor(task.area) + '44' }}>{task.area}</span>
+                  <button onClick={() => parkTask(task.id)} title="Park" className="text-dim hover:text-yellow-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">🕐</button>
+                  <button onClick={() => deleteTask(task.id)} title="Delete" className="text-dim hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                </div>
+
+                {expandedTask === task.id && (
+                  <div className="ml-5 mb-2 p-4 bg-black/5 rounded-lg space-y-3 fade-in border border-border/50">
+                    <input value={task.title} onChange={e => updateTask(task.id, { title: e.target.value })}
+                      className="w-full bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50 font-medium" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={task.area} onChange={e => updateTask(task.id, { area: e.target.value })}
+                        className="bg-bg border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none">
+                        {settings.areas.map(a => <option key={a.name} value={a.name}>{a.emoji} {a.name}</option>)}
+                      </select>
+                      <select value={task.priority} onChange={e => updateTask(task.id, { priority: e.target.value })}
+                        className="bg-bg border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none">
+                        <option value="Urgent">Urgent</option><option value="Important">Important</option><option value="When I Can">When I Can</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-dim block mb-1">📝 Notes / What I did</label>
+                      <textarea value={task.notes || ''} onChange={e => updateTask(task.id, { notes: e.target.value })}
+                        className="w-full bg-transparent border border-border rounded-lg px-3 py-2 text-sm text-text outline-none resize-none focus:border-accent/50" rows={2} placeholder="What did you do?" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-dim block mb-1">💡 What I learned <span className="text-accent/60">(auto-saves to Learning Center)</span></label>
+                      <textarea value={task.learnings || ''} onChange={e => updateTask(task.id, { learnings: e.target.value })}
+                        className="w-full bg-transparent border border-border rounded-lg px-3 py-2 text-sm text-text outline-none resize-none focus:border-accent/50" rows={2} placeholder="Key takeaways..." />
+                    </div>
+                    <button onClick={() => { completeTask(task.id); setExpandedTask(null); }}
+                      className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                      ✓ Done — Save & Archive
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Parked Tasks (2/5 width) */}
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4">
+          <h3 className="font-semibold flex items-center gap-2 mb-3 text-dim">🕐 Parked <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full">{parkedTasks.length}</span></h3>
+          {parkedTasks.length === 0 && <p className="text-dim text-xs py-4 text-center">No parked tasks.</p>}
+          <div className="space-y-1">
+            {parkedTasks.map(task => (
+              <div key={task.id} className="flex items-center gap-2 py-2 px-2 rounded-lg group hover:bg-black/5 transition-colors opacity-70 hover:opacity-100">
+                <button onClick={() => activateTask(task.id)} title="Activate"
+                  className="text-xs text-dim hover:text-accent transition-colors">▶</button>
+                <EditableText value={task.title} onChange={v => updateTask(task.id, { title: v })} className="text-sm flex-1" />
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/5" style={{ color: getAreaColor(task.area) }}>{task.area}</span>
+                <button onClick={() => deleteTask(task.id)} className="text-dim hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-dim mt-3 text-center">Click ▶ to activate a task</p>
+        </div>
+      </div>
+
+      {/* Done section */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <button onClick={() => setShowDone(!showDone)} className="flex items-center gap-2 w-full text-left">
+          <span className="text-sm">{showDone ? '▼' : '▶'}</span>
+          <h3 className="font-semibold text-dim flex items-center gap-2">✅ Done <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full">{doneTasks.length}</span></h3>
+        </button>
+        {showDone && (
+          <div className="mt-3 space-y-1 fade-in">
+            {doneTasks.length === 0 && <p className="text-dim text-xs text-center py-2">No completed tasks yet.</p>}
+            {doneTasks.map(task => (
+              <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg group hover:bg-black/5">
+                <span className="text-green-400 text-xs">✓</span>
+                <span className="text-sm text-dim line-through flex-1">{task.title}</span>
+                {task.learnings && <span className="text-xs text-accent" title="Has learning notes">📖</span>}
+                <span className="text-[10px] text-dim">{task.doneDate}</span>
+                <button onClick={() => restoreTask(task.id)} title="Restore to active"
+                  className="text-xs text-dim hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity">↩ undo</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 2: Monthly Goals ── */}
+      <MonthlyGoals />
+
+      {/* ── Section 3: Progress Bars ── */}
+      <ProgressBars />
+    </div>
+  );
+}
+
+// ─── Monthly Goals ───
+function MonthlyGoals() {
+  const { data, updateData, settings, updateSettings, getAreaColor } = useData();
+
+  const updateGoal = (section, index, value) => {
+    updateData('goals', prev => {
+      const updated = { ...prev };
+      const list = [...(updated[section] || [])];
+      list[index] = value;
+      // Auto-add empty row if last one has text
+      if (index === list.length - 1 && value.trim()) list.push('');
+      updated[section] = list;
+      return updated;
+    });
+  };
+
+  const deleteGoal = (section, index) => {
+    updateData('goals', prev => {
+      const updated = { ...prev };
+      const list = [...(updated[section] || [])];
+      list.splice(index, 1);
+      if (list.length === 0 || list[list.length - 1] !== '') list.push('');
+      updated[section] = list;
+      return updated;
+    });
+  };
+
+  const addSection = () => {
+    const name = prompt('New goal section name:');
+    if (!name || !name.trim()) return;
+    updateSettings('goalSections', [...settings.goalSections, { name: name.trim(), emoji: '🎯', color: '#8B5CF6' }]);
+    updateData('goals', prev => ({ ...prev, [name.trim()]: [''] }));
+  };
+
+  const deleteSection = (sectionName) => {
+    updateSettings('goalSections', settings.goalSections.filter(s => s.name !== sectionName));
+    updateData('goals', prev => {
+      const updated = { ...prev };
+      delete updated[sectionName];
+      return updated;
+    });
+  };
+
+  const updateSectionName = (index, newName) => {
+    const oldName = settings.goalSections[index].name;
+    const updated = [...settings.goalSections];
+    updated[index] = { ...updated[index], name: newName };
+    updateSettings('goalSections', updated);
+    // Move goals data to new key
+    updateData('goals', prev => {
+      const g = { ...prev };
+      g[newName] = g[oldName] || [''];
+      if (newName !== oldName) delete g[oldName];
+      return g;
+    });
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold flex items-center gap-2">
+          🎯 <EditableText value={settings.goalMonth} onChange={v => updateSettings('goalMonth', v)} className="inline" /> Goals
+        </h3>
+        <button onClick={addSection} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add Section</button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {settings.goalSections.map((section, si) => {
+          const goals = data.goals[section.name] || [''];
+          return (
+            <div key={si} className="bg-black/5 rounded-xl p-3 border border-border/50">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <EditableText value={section.emoji} onChange={v => {
+                    const updated = [...settings.goalSections]; updated[si] = { ...section, emoji: v }; updateSettings('goalSections', updated);
+                  }} className="text-base" />
+                  <EditableText value={section.name} onChange={v => updateSectionName(si, v)}
+                    className="text-sm font-medium" />
+                </div>
+                <button onClick={() => deleteSection(section.name)} className="text-dim hover:text-red-400 text-xs">✕</button>
+              </div>
+              <div className="space-y-1">
+                {goals.map((goal, gi) => (
+                  <div key={gi} className="flex items-center gap-1 group">
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: section.color || '#8B5CF6' }} />
+                    <input value={goal} onChange={e => updateGoal(section.name, gi, e.target.value)}
+                      placeholder={gi === goals.length - 1 ? 'Add goal...' : ''}
+                      className="flex-1 bg-transparent text-sm text-text outline-none placeholder-dim/40 py-0.5" />
+                    {goal && (
+                      <button onClick={() => deleteGoal(section.name, gi)}
+                        className="text-dim hover:text-red-400 text-[10px] opacity-0 group-hover:opacity-100">✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Progress Bars ───
+function ProgressBars() {
+  const { data, settings, updateSettings, getAreaColor, getAreaEmoji } = useData();
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4">
+      <h3 className="font-semibold mb-4">📈 Monthly Progress</h3>
+      <div className="space-y-4">
+        {settings.progressAreas.map(area => {
+          const target = settings.progressTargets[area] || 10;
+          const completed = data.tasks.filter(t => t.status === 'done' && t.area === area && (t.doneDate || '').startsWith(currentMonth)).length;
+          const pct = Math.min((completed / target) * 100, 100);
+          return (
+            <div key={area} className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: getAreaColor(area) }}>{getAreaEmoji(area)} {area}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-dim font-mono">{completed} /</span>
+                  <input type="number" value={target} min={1}
+                    onChange={e => updateSettings('progressTargets', { ...settings.progressTargets, [area]: parseInt(e.target.value) || 1 })}
+                    className="w-10 bg-transparent border-b border-border text-xs text-dim text-center outline-none focus:border-accent" />
+                </div>
+              </div>
+              <div className="w-full h-2.5 bg-black/5 rounded-full overflow-hidden">
+                <div className="h-full rounded-full progress-fill" style={{ width: pct + '%', backgroundColor: getAreaColor(area) }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-dim mt-4 text-center">Complete tasks and mark them done — progress updates automatically.</p>
+    </div>
+  );
+}
+
+// ─── Board 3: Content Hub ───
+const PIPELINE_STAGES = [
+  { key: 'Raw Idea', label: '💭 Raw Idea' },
+  { key: 'In Production', label: '🎬 In Production' },
+  { key: 'Published', label: '✅ Published' },
+];
+
+const PLATFORM_COLORS = { Twitter: '#3B82F6', TikTok: '#EC4899', Both: '#8B5CF6', YouTube: '#EF4444', Instagram: '#F97316' };
+
+function ContentHub() {
+  const { data, updateData } = useData();
+  const [editingCard, setEditingCard] = useState(null);
+  const [addingIdea, setAddingIdea] = useState(false);
+  const [newIdea, setNewIdea] = useState({ title: '', platform: 'Twitter' });
+  const [editingRef, setEditingRef] = useState(null);
+  const [addingRef, setAddingRef] = useState(false);
+  const [newRef, setNewRef] = useState({ title: '', platform: 'Twitter', type: 'Influencer' });
+
+  // Content potential suggestions from Learning Center
+  const suggestions = (data.learnings || []).filter(l => l.contentPotential);
+
+  const updatePipelineItem = (id, changes) => {
+    updateData('contentPipeline', prev => prev.map(c => c.id === id ? { ...c, ...changes } : c));
+  };
+  const deletePipelineItem = (id) => {
+    updateData('contentPipeline', prev => prev.filter(c => c.id !== id));
+    setEditingCard(null);
+  };
+  const addPipelineItem = () => {
+    if (!newIdea.title.trim()) return;
+    const item = { id: uid(), title: newIdea.title.trim(), platform: newIdea.platform, status: 'Raw Idea', hook: '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() };
+    updateData('contentPipeline', prev => [item, ...prev]);
+    setNewIdea({ title: '', platform: 'Twitter' });
+    setAddingIdea(false);
+  };
+  const createFromSuggestion = (learning) => {
+    const item = { id: uid(), title: learning.title, platform: 'Twitter', status: 'Raw Idea', hook: learning.takeaways?.slice(0, 100) || '', script: '', publishDate: '', performanceNotes: '', createdAt: todayISO() };
+    updateData('contentPipeline', prev => [item, ...prev]);
+  };
+
+  const updateRef = (id, changes) => {
+    updateData('references', prev => prev.map(r => r.id === id ? { ...r, ...changes } : r));
+  };
+  const deleteRef = (id) => {
+    updateData('references', prev => prev.filter(r => r.id !== id));
+    setEditingRef(null);
+  };
+  const addRef = () => {
+    if (!newRef.title.trim()) return;
+    const r = { id: uid(), title: newRef.title.trim(), platform: newRef.platform, type: newRef.type, link: '', notes: '', tags: [], color: PLATFORM_COLORS[newRef.platform] || '#8B5CF6' };
+    updateData('references', prev => [...prev, r]);
+    setNewRef({ title: '', platform: 'Twitter', type: 'Influencer' });
+    setAddingRef(false);
+  };
+
+  const editCard = editingCard ? data.contentPipeline.find(c => c.id === editingCard) : null;
+  const editRefCard = editingRef ? data.references.find(r => r.id === editingRef) : null;
+
+  // Weekly calendar — show content due this week
+  const getWeekDays = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  };
+  const weekDays = getWeekDays();
+  const todayStr = todayISO();
+
+  const getContentForDate = (iso) => data.contentPipeline.filter(c => c.publishDate === iso);
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+      {/* ── Weekly Content Calendar ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <h3 className="font-semibold mb-3">📅 This Week's Content</h3>
+        <div className="grid grid-cols-7 gap-2">
+          {weekDays.map(d => {
+            const iso = toLocalISO(d);
+            const isToday = iso === todayStr;
+            const items = getContentForDate(iso);
+            return (
+              <div key={iso} className={`rounded-xl p-2 min-h-[80px] transition-colors ${isToday ? 'bg-accent/10 border border-accent/30' : 'bg-black/5 border border-transparent'}`}>
+                <div className="text-center mb-1.5">
+                  <div className={`text-[10px] font-medium uppercase ${isToday ? 'text-accent' : 'text-dim'}`}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                  <div className={`text-sm font-semibold ${isToday ? 'text-accent' : 'text-text'}`}>{d.getDate()}</div>
+                </div>
+                {items.map(item => (
+                  <div key={item.id} onClick={() => setEditingCard(item.id)}
+                    className="text-[10px] rounded px-1.5 py-1 mb-1 cursor-pointer truncate hover:opacity-80"
+                    style={{ backgroundColor: (PLATFORM_COLORS[item.platform] || '#6B7280') + '22', color: PLATFORM_COLORS[item.platform] || '#6B7280' }}>
+                    {item.title}
+                  </div>
+                ))}
+                {items.length === 0 && <p className="text-[9px] text-dim/40 text-center mt-2">—</p>}
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-dim mt-2 text-center">Set a publish date on any content card to see it here.</p>
+      </div>
+
+      {/* ── Content Pipeline ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">🚀 Content Pipeline</h3>
+          <button onClick={() => setAddingIdea(true)} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ New Idea</button>
+        </div>
+
+        {addingIdea && (
+          <div className="flex gap-2 mb-4 fade-in">
+            <input value={newIdea.title} onChange={e => setNewIdea(p => ({ ...p, title: e.target.value }))} placeholder="Content idea..."
+              className="flex-1 bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50"
+              onKeyDown={e => { if (e.key === 'Enter') addPipelineItem(); if (e.key === 'Escape') setAddingIdea(false); }} autoFocus />
+            <select value={newIdea.platform} onChange={e => setNewIdea(p => ({ ...p, platform: e.target.value }))}
+              className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+              <option>Twitter</option><option>TikTok</option><option>Both</option><option>YouTube</option><option>Instagram</option>
+            </select>
+            <button onClick={addPipelineItem} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs">Add</button>
+            <button onClick={() => setAddingIdea(false)} className="text-dim hover:text-text text-xs px-1">✕</button>
+          </div>
+        )}
+
+        {/* Kanban columns */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {PIPELINE_STAGES.map(stage => {
+            const items = data.contentPipeline.filter(c => c.status === stage.key);
+            return (
+              <div key={stage.key} className="bg-black/5 rounded-xl p-2 min-h-[120px]">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs font-medium text-dim">{stage.label}</span>
+                  <span className="text-[10px] bg-black/10 text-dim px-1.5 py-0.5 rounded-full">{items.length}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {items.map(item => (
+                    <button key={item.id} onClick={() => setEditingCard(item.id)}
+                      className="w-full text-left bg-card border border-border/50 rounded-lg p-2 hover:border-accent/40 transition-colors">
+                      <p className="text-xs font-medium truncate mb-1">{item.title}</p>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: (PLATFORM_COLORS[item.platform] || '#6B7280') + '22', color: PLATFORM_COLORS[item.platform] || '#6B7280' }}>
+                        {item.platform}
+                      </span>
+                      {item.hook && <p className="text-[10px] text-dim mt-1 truncate">{item.hook}</p>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Edit card modal */}
+      <Modal open={!!editCard} onClose={() => setEditingCard(null)} title="Edit Content" wide>
+        {editCard && (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-dim block mb-1">Title</label>
+              <input value={editCard.title} onChange={e => updatePipelineItem(editCard.id, { title: e.target.value })}
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-dim block mb-1">Platform</label>
+                <select value={editCard.platform} onChange={e => updatePipelineItem(editCard.id, { platform: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text outline-none">
+                  <option>Twitter</option><option>TikTok</option><option>Both</option><option>YouTube</option><option>Instagram</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-dim block mb-1">Status</label>
+                <select value={editCard.status} onChange={e => updatePipelineItem(editCard.id, { status: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text outline-none">
+                  {PIPELINE_STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Hook</label>
+              <input value={editCard.hook || ''} onChange={e => updatePipelineItem(editCard.id, { hook: e.target.value })}
+                placeholder="Opening hook line..."
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50" />
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Script</label>
+              <textarea value={editCard.script || ''} onChange={e => updatePipelineItem(editCard.id, { script: e.target.value })}
+                placeholder="Write your script..."
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50 resize-none" rows={5} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-dim block mb-1">Publish Date</label>
+                <input type="date" value={editCard.publishDate || ''} onChange={e => updatePipelineItem(editCard.id, { publishDate: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Performance Notes</label>
+              <textarea value={editCard.performanceNotes || ''} onChange={e => updatePipelineItem(editCard.id, { performanceNotes: e.target.value })}
+                placeholder="After publishing — how did it perform?"
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50 resize-none" rows={2} />
+            </div>
+            <div className="flex justify-end pt-2 border-t border-border">
+              <button onClick={() => deletePipelineItem(editCard.id)} className="text-xs px-3 py-1.5 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">Delete</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Content Potential Suggestions ── */}
+      {suggestions.length > 0 && (
+        <div className="bg-card border border-accent/20 rounded-xl p-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">💡 Content Suggestions <span className="text-xs text-dim font-normal">from Learning Center</span></h3>
+          <div className="space-y-2">
+            {suggestions.map(s => (
+              <div key={s.id} className="flex items-center gap-3 py-1.5 px-2 rounded-lg bg-black/5">
+                <span className="text-sm flex-1 truncate">{s.title}</span>
+                <span className="text-[10px] text-dim">{s.domain}</span>
+                <button onClick={() => createFromSuggestion(s)} className="text-xs px-2 py-1 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors whitespace-nowrap">
+                  + Create content
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── References & Inspiration ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">📌 References & Inspiration</h3>
+          <button onClick={() => setAddingRef(true)} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add</button>
+        </div>
+
+        {addingRef && (
+          <div className="flex gap-2 mb-4 fade-in flex-wrap">
+            <input value={newRef.title} onChange={e => setNewRef(p => ({ ...p, title: e.target.value }))} placeholder="Reference title..."
+              className="flex-1 min-w-[200px] bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50"
+              onKeyDown={e => { if (e.key === 'Enter') addRef(); if (e.key === 'Escape') setAddingRef(false); }} autoFocus />
+            <select value={newRef.platform} onChange={e => setNewRef(p => ({ ...p, platform: e.target.value }))}
+              className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+              <option>Twitter</option><option>TikTok</option><option>Both</option><option>YouTube</option><option>Instagram</option>
+            </select>
+            <select value={newRef.type} onChange={e => setNewRef(p => ({ ...p, type: e.target.value }))}
+              className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+              <option>Influencer</option><option>Format Idea</option><option>Mood Board</option><option>Article</option><option>Video</option>
+            </select>
+            <button onClick={addRef} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs">Add</button>
+            <button onClick={() => setAddingRef(false)} className="text-dim hover:text-text text-xs px-1">✕</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {data.references.map(ref => (
+            <button key={ref.id} onClick={() => setEditingRef(ref.id)}
+              className="text-left bg-black/5 border border-border/50 rounded-xl overflow-hidden hover:border-accent/40 transition-colors group">
+              <div className="h-16 w-full" style={{ background: `linear-gradient(135deg, ${ref.color || '#8B5CF6'}44, ${ref.color || '#8B5CF6'}11)` }} />
+              <div className="p-3">
+                <p className="text-sm font-medium truncate mb-1.5">{ref.title}</p>
+                <div className="flex gap-1 flex-wrap">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: (PLATFORM_COLORS[ref.platform] || '#6B7280') + '22', color: PLATFORM_COLORS[ref.platform] || '#6B7280' }}>
+                    {ref.platform}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/10 text-dim">{ref.type}</span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Edit reference modal */}
+      <Modal open={!!editRefCard} onClose={() => setEditingRef(null)} title="Edit Reference">
+        {editRefCard && (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-dim block mb-1">Title</label>
+              <input value={editRefCard.title} onChange={e => updateRef(editRefCard.id, { title: e.target.value })}
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-dim block mb-1">Platform</label>
+                <select value={editRefCard.platform} onChange={e => updateRef(editRefCard.id, { platform: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text outline-none">
+                  <option>Twitter</option><option>TikTok</option><option>Both</option><option>YouTube</option><option>Instagram</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-dim block mb-1">Type</label>
+                <select value={editRefCard.type} onChange={e => updateRef(editRefCard.id, { type: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text outline-none">
+                  <option>Influencer</option><option>Format Idea</option><option>Mood Board</option><option>Article</option><option>Video</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Link</label>
+              <input value={editRefCard.link || ''} onChange={e => updateRef(editRefCard.id, { link: e.target.value })}
+                placeholder="https://..."
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50" />
+            </div>
+            <div>
+              <label className="text-xs text-dim block mb-1">Notes</label>
+              <textarea value={editRefCard.notes || ''} onChange={e => updateRef(editRefCard.id, { notes: e.target.value })}
+                placeholder="What makes this inspiring?"
+                className="w-full bg-black/5 border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50 resize-none" rows={3} />
+            </div>
+            <div className="flex justify-end pt-2 border-t border-border">
+              <button onClick={() => deleteRef(editRefCard.id)} className="text-xs px-3 py-1.5 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">Delete</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Rich Text Editor (Notion-style) ───
+function RichEditor({ value, onChange, placeholder = 'Start writing...' }) {
+  const editorRef = useRef(null);
+  const isInitial = useRef(true);
+
+  useEffect(() => {
+    if (isInitial.current && editorRef.current) {
+      editorRef.current.innerHTML = value || '';
+      isInitial.current = false;
+    }
+  }, []);
+
+  const exec = (cmd, val = null) => {
+    document.execCommand(cmd, false, val);
+    editorRef.current?.focus();
+    handleInput();
+  };
+
+  const handleInput = () => {
+    if (editorRef.current) onChange(editorRef.current.innerHTML);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      exec('insertText', '    ');
+    }
+  };
+
+  const ToolBtn = ({ cmd, icon, title, val }) => (
+    <button onMouseDown={e => { e.preventDefault(); exec(cmd, val); }} title={title}
+      className="w-7 h-7 rounded flex items-center justify-center text-xs text-dim hover:text-text hover:bg-black/10 transition-colors">
+      {icon}
+    </button>
+  );
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center gap-0.5 px-2 py-1.5 bg-black/5 border-b border-border flex-wrap">
+        <ToolBtn cmd="bold" icon={<span className="font-bold">B</span>} title="Bold (Ctrl+B)" />
+        <ToolBtn cmd="italic" icon={<span className="italic">I</span>} title="Italic (Ctrl+I)" />
+        <ToolBtn cmd="underline" icon={<span className="underline">U</span>} title="Underline (Ctrl+U)" />
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolBtn cmd="formatBlock" val="h2" icon="H1" title="Heading" />
+        <ToolBtn cmd="formatBlock" val="h3" icon="H2" title="Subheading" />
+        <ToolBtn cmd="formatBlock" val="p" icon="¶" title="Paragraph" />
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolBtn cmd="insertUnorderedList" icon="•" title="Bullet list" />
+        <ToolBtn cmd="insertOrderedList" icon="1." title="Numbered list" />
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolBtn cmd="strikeThrough" icon={<span className="line-through">S</span>} title="Strikethrough" />
+      </div>
+      {/* Editor */}
+      <div ref={editorRef} contentEditable suppressContentEditableWarning
+        onInput={handleInput} onKeyDown={handleKeyDown}
+        data-placeholder={placeholder}
+        className="px-3 py-2 min-h-[120px] max-h-[400px] overflow-y-auto text-sm text-text outline-none rich-editor"
+        style={{ lineHeight: 1.7 }}
+      />
+    </div>
+  );
+}
+
+// ─── Delete Confirmation ───
+function ConfirmModal({ open, onClose, onConfirm, title, message }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center text-lg">⚠️</div>
+          <h3 className="font-semibold">{title}</h3>
+        </div>
+        <p className="text-sm text-dim mb-4">{message}</p>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-black/5 hover:bg-black/10 text-sm text-text transition-colors">Cancel</button>
+          <button onClick={() => { onConfirm(); onClose(); }} className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm transition-colors">Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sticky Notes Sidebar ───
+function StickyNotes({ domain, color }) {
+  const { data, updateData } = useData();
+  const [newNote, setNewNote] = useState('');
+  const notes = (data.stickyNotes || {})[domain] || [];
+
+  const addNote = () => {
+    if (!newNote.trim()) return;
+    const note = { id: uid(), text: newNote.trim(), color, createdAt: todayISO() };
+    updateData('stickyNotes', prev => ({ ...prev, [domain]: [note, ...(prev?.[domain] || [])] }));
+    setNewNote('');
+  };
+
+  const deleteNote = (noteId) => {
+    updateData('stickyNotes', prev => ({ ...prev, [domain]: (prev?.[domain] || []).filter(n => n.id !== noteId) }));
+  };
+
+  const updateNote = (noteId, text) => {
+    updateData('stickyNotes', prev => ({ ...prev, [domain]: (prev?.[domain] || []).map(n => n.id === noteId ? { ...n, text } : n) }));
+  };
+
+  const STICKY_COLORS = ['#8B5CF6', '#F59E0B', '#EC4899', '#10B981', '#3B82F6', '#EF4444'];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-semibold text-dim uppercase tracking-wider">📌 Quick Notes</h4>
+      </div>
+      {/* Add note input */}
+      <div className="flex gap-1 mb-3">
+        <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Jot something down..."
+          onKeyDown={e => { if (e.key === 'Enter') addNote(); }}
+          className="flex-1 bg-black/5 border border-border rounded-lg px-3 py-2 text-xs text-text outline-none focus:border-accent/50 placeholder-dim/50" />
+        <button onClick={addNote} className="w-8 h-8 rounded-lg bg-accent hover:bg-accent-hover text-white flex items-center justify-center text-sm flex-shrink-0">+</button>
+      </div>
+      {/* Notes list */}
+      <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+        {notes.length === 0 && <p className="text-[10px] text-dim/50 text-center py-4">Quick thoughts go here. No pressure, just jot.</p>}
+        {notes.map(note => (
+          <div key={note.id} className="group relative rounded-lg p-2.5 transition-all hover:ring-1 hover:ring-black/10"
+            style={{ backgroundColor: (note.color || color) + '12', borderLeft: `2px solid ${note.color || color}44` }}>
+            <textarea value={note.text} onChange={e => updateNote(note.id, e.target.value)}
+              className="w-full bg-transparent text-xs text-text outline-none resize-none leading-relaxed"
+              rows={Math.max(1, Math.ceil(note.text.length / 30))} />
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[9px] text-dim/50">{note.createdAt}</span>
+              <button onClick={() => deleteNote(note.id)}
+                className="text-[10px] text-dim/40 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Board 4: Learning Center ───
+function LearningCenter() {
+  const { data, updateData, settings, updateSettings, getAreaColor } = useData();
+  const [expandedEntry, setExpandedEntry] = useState(null);
+  const [collapsedDomains, setCollapsedDomains] = useState({});
+  const [addingEntry, setAddingEntry] = useState(null);
+  const [newEntry, setNewEntry] = useState({ title: '', takeaways: '', source: 'Article', sourceName: '' });
+  const [addingDomain, setAddingDomain] = useState(false);
+  const [newDomainName, setNewDomainName] = useState('');
+  const [editingDomainIdx, setEditingDomainIdx] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const toggleDomain = (d) => setCollapsedDomains(prev => ({ ...prev, [d]: !prev[d] }));
+
+  const domainColors = {
+    Crypto: '#8B5CF6', Marketing: '#F97316', 'AI & Tech': '#F59E0B',
+    Books: '#3B82F6', '경제/시사': '#10B981', 'Personal Growth': '#EC4899',
+  };
+  const getDomainColor = (d) => domainColors[d] || getAreaColor(d) || '#6B7280';
+
+  const updateEntry = (id, changes) => {
+    updateData('learnings', prev => prev.map(l => l.id === id ? { ...l, ...changes } : l));
+  };
+  const deleteEntry = (id) => {
+    updateData('learnings', prev => prev.filter(l => l.id !== id));
+    setExpandedEntry(null);
+  };
+  const handleAddEntry = (domain) => {
+    if (!newEntry.title.trim()) return;
+    const entry = {
+      id: uid(), title: newEntry.title.trim(), domain,
+      source: newEntry.source, sourceName: newEntry.sourceName,
+      takeaways: newEntry.takeaways, contentPotential: false,
+      fromTask: null, date: todayISO(),
+    };
+    updateData('learnings', prev => [entry, ...prev]);
+    setNewEntry({ title: '', takeaways: '', source: 'Article', sourceName: '' });
+    setAddingEntry(null);
+  };
+  const addDomain = () => {
+    if (!newDomainName.trim()) return;
+    updateSettings('learningDomains', [...settings.learningDomains, newDomainName.trim()]);
+    setNewDomainName('');
+    setAddingDomain(false);
+  };
+  const renameDomain = (idx, newName) => {
+    const oldName = settings.learningDomains[idx];
+    const updated = [...settings.learningDomains];
+    updated[idx] = newName;
+    updateSettings('learningDomains', updated);
+    updateData('learnings', prev => prev.map(l => l.domain === oldName ? { ...l, domain: newName } : l));
+    setEditingDomainIdx(null);
+  };
+  const deleteDomain = (idx) => {
+    updateSettings('learningDomains', settings.learningDomains.filter((_, i) => i !== idx));
+  };
+
+  const handleConfirmDelete = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.type === 'domain') deleteDomain(confirmDelete.idx);
+    if (confirmDelete.type === 'entry') deleteEntry(confirmDelete.id);
+    setConfirmDelete(null);
+  };
+
+  // Group entries by domain
+  const grouped = {};
+  settings.learningDomains.forEach(d => { grouped[d] = []; });
+  (data.learnings || []).forEach(l => {
+    if (grouped[l.domain]) grouped[l.domain].push(l);
+    else {
+      if (!grouped['Other']) grouped['Other'] = [];
+      grouped['Other'].push(l);
+    }
+  });
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-semibold">📚 Learning Center</h2>
+        <div className="flex gap-2">
+          {addingDomain ? (
+            <div className="flex gap-1 fade-in">
+              <input value={newDomainName} onChange={e => setNewDomainName(e.target.value)} placeholder="Domain name..."
+                className="bg-transparent border border-border rounded-lg px-3 py-1 text-sm text-text outline-none focus:border-accent/50"
+                onKeyDown={e => { if (e.key === 'Enter') addDomain(); if (e.key === 'Escape') setAddingDomain(false); }} autoFocus />
+              <button onClick={addDomain} className="px-2 py-1 bg-accent text-white rounded-lg text-xs">Add</button>
+              <button onClick={() => setAddingDomain(false)} className="text-dim text-xs px-1">✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setAddingDomain(true)} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add Domain</button>
+          )}
+        </div>
+      </div>
+
+      {settings.learningDomains.map((domain, di) => {
+        const entries = grouped[domain] || [];
+        const collapsed = collapsedDomains[domain];
+        const color = getDomainColor(domain);
+        const stickyCount = ((data.stickyNotes || {})[domain] || []).length;
+        return (
+          <div key={domain} className="bg-card border border-border rounded-xl overflow-hidden">
+            {/* Domain header */}
+            <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-black/5 transition-colors" onClick={() => toggleDomain(domain)}>
+              <span className="text-xs">{collapsed ? '▶' : '▼'}</span>
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+              {editingDomainIdx === di ? (
+                <input defaultValue={domain} autoFocus
+                  onBlur={e => renameDomain(di, e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') renameDomain(di, e.target.value); if (e.key === 'Escape') setEditingDomainIdx(null); }}
+                  onClick={e => e.stopPropagation()}
+                  className="bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none" />
+              ) : (
+                <span className="font-medium text-sm flex-1">{domain}</span>
+              )}
+              <span className="text-[10px] text-dim bg-black/5 px-2 py-0.5 rounded-full">{entries.length} notes</span>
+              <span className="text-[10px] text-dim bg-black/5 px-2 py-0.5 rounded-full">{stickyCount} quick</span>
+              <button onClick={e => { e.stopPropagation(); setEditingDomainIdx(di); }} className="text-dim hover:text-accent text-xs">✏️</button>
+              <button onClick={e => { e.stopPropagation(); setConfirmDelete({ type: 'domain', idx: di, name: domain }); }}
+                className="text-dim hover:text-red-400 text-xs">✕</button>
+              <button onClick={e => { e.stopPropagation(); setAddingEntry(domain); }} className="text-dim hover:text-accent text-xs">+</button>
+            </div>
+
+            {!collapsed && (
+              <div className="px-4 pb-4">
+                {/* Add entry form */}
+                {addingEntry === domain && (
+                  <div className="mb-3 p-3 bg-black/5 rounded-lg space-y-2 fade-in">
+                    <input value={newEntry.title} onChange={e => setNewEntry(p => ({ ...p, title: e.target.value }))} placeholder="Note title (e.g. 'Gas Fees Deep Dive')"
+                      className="w-full bg-transparent border border-border rounded-lg px-3 py-2 text-sm text-text outline-none focus:border-accent/50 font-medium"
+                      onKeyDown={e => { if (e.key === 'Enter' && newEntry.title.trim()) handleAddEntry(domain); if (e.key === 'Escape') setAddingEntry(null); }} autoFocus />
+                    <div className="flex gap-2 flex-wrap">
+                      <select value={newEntry.source} onChange={e => setNewEntry(p => ({ ...p, source: e.target.value }))}
+                        className="bg-bg border border-border rounded-lg px-2 py-1 text-xs text-text outline-none">
+                        <option>Article</option><option>Video</option><option>Book</option><option>Course</option><option>Podcast</option><option>Hands-on</option><option>Conversation</option>
+                      </select>
+                      <input value={newEntry.sourceName} onChange={e => setNewEntry(p => ({ ...p, sourceName: e.target.value }))} placeholder="Source name..."
+                        className="flex-1 min-w-[120px] bg-transparent border border-border rounded-lg px-3 py-1 text-xs text-text outline-none" />
+                      <button onClick={() => handleAddEntry(domain)} className="px-3 py-1 bg-accent text-white rounded-lg text-xs">Create</button>
+                      <button onClick={() => setAddingEntry(null)} className="text-dim text-xs px-1">✕</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Split layout: Deep Notes (left) | Sticky Notes (right) */}
+                <div className="flex flex-col lg:flex-row gap-4">
+                  {/* LEFT — Deep notebook cards (wider) */}
+                  <div className="flex-1 min-w-0 lg:w-2/3">
+                    <h4 className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">📓 Deep Notes</h4>
+                    {entries.length === 0 && addingEntry !== domain && (
+                      <div className="border border-dashed border-border rounded-lg p-6 text-center text-dim text-xs">
+                        No deep notes yet. Click + to add, or complete tasks tagged "{domain}".
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {entries.map(entry => {
+                        const isExpanded = expandedEntry === entry.id;
+                        return (
+                          <div key={entry.id} className={`rounded-xl overflow-hidden transition-all ${isExpanded ? 'bg-black/[0.04] border border-border/70' : 'bg-black/[0.02] border border-transparent hover:border-border/40'}`}
+                            style={{ borderLeftWidth: '3px', borderLeftColor: color }}>
+                            <div className="flex items-center gap-2 px-3 sm:px-4 py-3 cursor-pointer" onClick={() => setExpandedEntry(isExpanded ? null : entry.id)}>
+                              <span className="text-xs text-dim">{isExpanded ? '▼' : '▶'}</span>
+                              <span className="text-sm font-medium flex-1 truncate">{entry.title}</span>
+                              {entry.contentPotential && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent hidden sm:inline">✨</span>}
+                              {entry.fromTask && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 hidden sm:inline">task</span>}
+                              <span className="text-[10px] text-dim hidden sm:inline">{entry.source}</span>
+                            </div>
+                            {isExpanded && (
+                              <div className="px-3 sm:px-4 pb-4 space-y-3 fade-in" onClick={e => e.stopPropagation()}>
+                                <input value={entry.title} onChange={e => updateEntry(entry.id, { title: e.target.value })}
+                                  className="w-full bg-transparent text-base font-semibold text-text outline-none border-b border-border/50 pb-2 focus:border-accent/50" />
+                                <div>
+                                  <label className="text-xs text-dim block mb-1.5">Notes</label>
+                                  <RichEditor value={entry.takeaways || ''} onChange={v => updateEntry(entry.id, { takeaways: v })} placeholder="Start writing..." />
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                  <select value={entry.source || ''} onChange={e => updateEntry(entry.id, { source: e.target.value })}
+                                    className="bg-bg border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none">
+                                    <option>Article</option><option>Video</option><option>Book</option><option>Course</option><option>Podcast</option><option>Hands-on</option><option>Conversation</option>
+                                  </select>
+                                  <input value={entry.sourceName || ''} onChange={e => updateEntry(entry.id, { sourceName: e.target.value })}
+                                    className="bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50" placeholder="Source name" />
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between pt-2 border-t border-border/40 gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <button onClick={() => updateEntry(entry.id, { contentPotential: !entry.contentPotential })}
+                                      className={`w-4 h-4 rounded border-2 flex items-center justify-center text-[10px] transition-colors ${entry.contentPotential ? 'border-accent bg-accent text-white' : 'border-border'}`}>
+                                      {entry.contentPotential && '✓'}
+                                    </button>
+                                    <span className="text-xs text-dim">Content Potential</span>
+                                  </label>
+                                  <div className="flex items-center gap-2">
+                                    {entry.fromTask && <span className="text-[10px] text-dim">📋 {entry.fromTask}</span>}
+                                    <span className="text-[10px] text-dim">{entry.date}</span>
+                                    <button onClick={() => setConfirmDelete({ type: 'entry', id: entry.id, name: entry.title })}
+                                      className="text-xs text-red-400/70 hover:text-red-400 px-2 py-1 rounded">Delete</button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* RIGHT — Sticky notes (narrower) */}
+                  <div className="lg:w-1/3 lg:border-l lg:border-border/50 lg:pl-4">
+                    <StickyNotes domain={domain} color={color} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="bg-black/5 border border-border rounded-xl p-3 text-center">
+        <p className="text-xs text-dim">💡 Entries with "Content Potential" checked appear as suggestions in Content Hub.</p>
+      </div>
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={confirmDelete?.type === 'domain' ? 'Delete domain?' : 'Delete entry?'}
+        message={confirmDelete?.type === 'domain'
+          ? `This will remove "${confirmDelete?.name}" from your domains. Existing entries won't be deleted but will be ungrouped.`
+          : `This will permanently delete "${confirmDelete?.name}". This can't be undone.`}
+      />
+    </div>
+  );
+}
+
+// ─── Board 5: Finance ───
+const CURRENCY_SYMBOLS = { THB: '฿', KRW: '₩', USD: '$' };
+const CHART_COLORS = ['#8B5CF6', '#EC4899', '#F59E0B', '#3B82F6', '#10B981', '#F97316', '#EF4444', '#6366F1', '#14B8A6'];
+
+function FinanceBoard() {
+  const { data, updateData, settings, updateSettings } = useData();
+  const [addingExpense, setAddingExpense] = useState(false);
+  const [newExpense, setNewExpense] = useState({ item: '', amount: '', currency: 'THB', category: settings.spendingCategories[0] || 'Food' });
+  const [addingFixed, setAddingFixed] = useState(false);
+  const [newFixed, setNewFixed] = useState({ name: '', amount: '', currency: 'KRW', type: 'Monthly' });
+  const [editingFixedId, setEditingFixedId] = useState(null);
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
+
+  // Fixed expenses
+  const updateFixed = (id, changes) => updateData('fixedExpenses', prev => prev.map(e => e.id === id ? { ...e, ...changes } : e));
+  const deleteFixed = (id) => updateData('fixedExpenses', prev => prev.filter(e => e.id !== id));
+  const addFixed = () => {
+    if (!newFixed.name.trim() || !newFixed.amount) return;
+    updateData('fixedExpenses', prev => [...prev, { id: uid(), name: newFixed.name.trim(), amount: parseFloat(newFixed.amount), currency: newFixed.currency, type: newFixed.type }]);
+    setNewFixed({ name: '', amount: '', currency: 'KRW', type: 'Monthly' });
+    setAddingFixed(false);
+  };
+
+  // Spending log
+  const updateExpense = (id, changes) => updateData('expenses', prev => prev.map(e => e.id === id ? { ...e, ...changes } : e));
+  const deleteExpense = (id) => updateData('expenses', prev => prev.filter(e => e.id !== id));
+  const addExpense = () => {
+    if (!newExpense.item.trim() || !newExpense.amount) return;
+    updateData('expenses', prev => [{ id: uid(), item: newExpense.item.trim(), amount: parseFloat(newExpense.amount), currency: newExpense.currency, category: newExpense.category, date: todayISO() }, ...prev]);
+    setNewExpense({ item: '', amount: '', currency: 'THB', category: settings.spendingCategories[0] || 'Food' });
+    setAddingExpense(false);
+  };
+
+  // Spending by category — aggregate current month
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthExpenses = (data.expenses || []).filter(e => (e.date || '').startsWith(currentMonth));
+  const categoryTotals = {};
+  monthExpenses.forEach(e => {
+    const cat = e.category || 'Other';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + (e.amount || 0);
+  });
+  const totalSpent = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
+  const categoryList = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+
+  // Simple donut chart with SVG (no Recharts dependency needed)
+  const DonutChart = ({ data: chartData, total }) => {
+    if (chartData.length === 0) {
+      return (
+        <div className="w-48 h-48 mx-auto flex items-center justify-center">
+          <div className="w-40 h-40 rounded-full border-4 border-border flex items-center justify-center">
+            <span className="text-dim text-xs">No data</span>
+          </div>
+        </div>
+      );
+    }
+    let cumulative = 0;
+    const radius = 70;
+    const circumference = 2 * Math.PI * radius;
+    return (
+      <div className="relative w-48 h-48 mx-auto">
+        <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90">
+          {chartData.map(([cat, amount], i) => {
+            const pct = amount / total;
+            const offset = cumulative * circumference;
+            cumulative += pct;
+            return (
+              <circle key={cat} cx="100" cy="100" r={radius} fill="none"
+                stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth="24"
+                strokeDasharray={`${pct * circumference} ${circumference}`}
+                strokeDashoffset={-offset}
+                className="transition-all duration-500" />
+            );
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-bold">฿{Math.round(totalSpent).toLocaleString()}</span>
+          <span className="text-[10px] text-dim">This month</span>
+        </div>
+      </div>
+    );
+  };
+
+  const formatAmount = (amount, currency) => {
+    const sym = CURRENCY_SYMBOLS[currency] || currency;
+    return sym + Number(amount).toLocaleString();
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      {/* ── Section 1: Fixed Expenses ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">1️⃣ Monthly Fixed Expenses</h3>
+          <button onClick={() => setAddingFixed(true)} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add</button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-dim text-xs border-b border-border">
+                <th className="text-left py-2 px-2 font-medium">Item</th>
+                <th className="text-right py-2 px-2 font-medium">Amount</th>
+                <th className="text-center py-2 px-2 font-medium">Currency</th>
+                <th className="text-center py-2 px-2 font-medium">Type</th>
+                <th className="w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data.fixedExpenses || []).map(exp => (
+                <tr key={exp.id} className="border-b border-border/50 group hover:bg-black/5">
+                  <td className="py-2 px-2">
+                    {editingFixedId === exp.id ? (
+                      <input value={exp.name} onChange={e => updateFixed(exp.id, { name: e.target.value })}
+                        onBlur={() => setEditingFixedId(null)}
+                        className="bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none w-full" autoFocus />
+                    ) : (
+                      <span className="cursor-pointer hover:text-accent" onClick={() => setEditingFixedId(exp.id)}>{exp.name}</span>
+                    )}
+                  </td>
+                  <td className="py-2 px-2 text-right font-mono">
+                    <input type="number" value={exp.amount} onChange={e => updateFixed(exp.id, { amount: parseFloat(e.target.value) || 0 })}
+                      className="bg-transparent text-right text-sm text-text outline-none w-24 hover:bg-black/5 rounded px-1" />
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    <select value={exp.currency} onChange={e => updateFixed(exp.id, { currency: e.target.value })}
+                      className="bg-transparent text-xs text-dim outline-none cursor-pointer text-center">
+                      <option>KRW</option><option>USD</option><option>THB</option>
+                    </select>
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    <select value={exp.type} onChange={e => updateFixed(exp.id, { type: e.target.value })}
+                      className="bg-transparent text-xs text-dim outline-none cursor-pointer text-center">
+                      <option>Monthly</option><option>Subscription</option><option>대출</option>
+                    </select>
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    <button onClick={() => deleteFixed(exp.id)} className="text-dim hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {addingFixed && (
+          <div className="flex gap-2 mt-3 fade-in flex-wrap">
+            <input value={newFixed.name} onChange={e => setNewFixed(p => ({ ...p, name: e.target.value }))} placeholder="Item name..."
+              className="flex-1 min-w-[140px] bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50"
+              onKeyDown={e => { if (e.key === 'Enter') addFixed(); if (e.key === 'Escape') setAddingFixed(false); }} autoFocus />
+            <input type="number" value={newFixed.amount} onChange={e => setNewFixed(p => ({ ...p, amount: e.target.value }))} placeholder="Amount"
+              className="w-24 bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+            <select value={newFixed.currency} onChange={e => setNewFixed(p => ({ ...p, currency: e.target.value }))}
+              className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+              <option>KRW</option><option>USD</option><option>THB</option>
+            </select>
+            <select value={newFixed.type} onChange={e => setNewFixed(p => ({ ...p, type: e.target.value }))}
+              className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+              <option>Monthly</option><option>Subscription</option><option>대출</option>
+            </select>
+            <button onClick={addFixed} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs">Add</button>
+            <button onClick={() => setAddingFixed(false)} className="text-dim text-xs px-1">✕</button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 2: Spending by Category ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <h3 className="font-semibold mb-4">2️⃣ Spending by Category <span className="text-dim font-normal text-sm ml-2">This month</span></h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Donut chart */}
+          <DonutChart data={categoryList} total={totalSpent} />
+          {/* Breakdown */}
+          <div className="space-y-2 flex flex-col justify-center">
+            {categoryList.length === 0 && <p className="text-dim text-sm text-center">No spending logged this month.</p>}
+            {categoryList.map(([cat, amount], i) => {
+              const pct = totalSpent > 0 ? Math.round((amount / totalSpent) * 100) : 0;
+              return (
+                <div key={cat} className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                  <span className="text-sm flex-1">{cat}</span>
+                  <span className="text-sm font-mono">฿{Math.round(amount).toLocaleString()}</span>
+                  <span className="text-xs text-dim w-10 text-right">{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 3: Spending Log ── */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">💳 Spending Log</h3>
+          <button onClick={() => setAddingExpense(true)} className="text-xs px-2.5 py-1 rounded-lg bg-accent hover:bg-accent-hover text-white">+ Add</button>
+        </div>
+
+        {addingExpense && (
+          <div className="bg-black/5 rounded-lg p-3 mb-4 fade-in">
+            <div className="flex gap-2 flex-wrap">
+              <input value={newExpense.item} onChange={e => setNewExpense(p => ({ ...p, item: e.target.value }))} placeholder="What did you buy?"
+                className="flex-1 min-w-[160px] bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none focus:border-accent/50"
+                onKeyDown={e => { if (e.key === 'Enter') addExpense(); if (e.key === 'Escape') setAddingExpense(false); }} autoFocus />
+              <input type="number" value={newExpense.amount} onChange={e => setNewExpense(p => ({ ...p, amount: e.target.value }))} placeholder="Amount"
+                className="w-24 bg-transparent border border-border rounded-lg px-3 py-1.5 text-sm text-text outline-none" />
+              <select value={newExpense.currency} onChange={e => setNewExpense(p => ({ ...p, currency: e.target.value }))}
+                className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+                <option>THB</option><option>KRW</option><option>USD</option>
+              </select>
+              <select value={newExpense.category} onChange={e => setNewExpense(p => ({ ...p, category: e.target.value }))}
+                className="bg-bg border border-border rounded-lg px-2 py-1.5 text-xs text-text outline-none">
+                {settings.spendingCategories.map(c => <option key={c}>{c}</option>)}
+              </select>
+              <button onClick={addExpense} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs">Add</button>
+              <button onClick={() => setAddingExpense(false)} className="text-dim text-xs px-1">✕</button>
+            </div>
+          </div>
+        )}
+
+        {(data.expenses || []).length === 0 && (
+          <p className="text-dim text-sm text-center py-4">No expenses logged. Click "+ Add" to start tracking.</p>
+        )}
+
+        <div className="space-y-1">
+          {(data.expenses || []).map(exp => (
+            <div key={exp.id} className="flex items-center gap-3 py-2 px-2 rounded-lg group hover:bg-black/5 transition-colors">
+              {editingExpenseId === exp.id ? (
+                <React.Fragment>
+                  <input value={exp.item} onChange={e => updateExpense(exp.id, { item: e.target.value })}
+                    className="flex-1 bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none" autoFocus />
+                  <input type="number" value={exp.amount} onChange={e => updateExpense(exp.id, { amount: parseFloat(e.target.value) || 0 })}
+                    className="w-20 bg-transparent border border-accent/50 rounded px-2 py-0.5 text-sm text-text outline-none text-right" />
+                  <select value={exp.currency} onChange={e => updateExpense(exp.id, { currency: e.target.value })}
+                    className="bg-bg border border-border rounded px-1 py-0.5 text-xs text-text outline-none">
+                    <option>THB</option><option>KRW</option><option>USD</option>
+                  </select>
+                  <select value={exp.category} onChange={e => updateExpense(exp.id, { category: e.target.value })}
+                    className="bg-bg border border-border rounded px-1 py-0.5 text-xs text-text outline-none">
+                    {settings.spendingCategories.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  <button onClick={() => setEditingExpenseId(null)} className="text-xs text-accent">✓</button>
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <span className="text-sm flex-1 cursor-pointer hover:text-accent" onClick={() => setEditingExpenseId(exp.id)}>{exp.item}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-black/5 text-dim">{exp.category}</span>
+                  <span className="text-sm font-mono" style={{ color: '#37352F' }}>{formatAmount(exp.amount, exp.currency)}</span>
+                  <span className="text-[10px] text-dim">{exp.date}</span>
+                </React.Fragment>
+              )}
+              <button onClick={() => deleteExpense(exp.id)} className="text-dim hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App ───
+function App() {
+  const [activeBoard, setActiveBoard] = useState('braindump');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('tags');
+
+  const openSettings = (tab = 'tags') => {
+    setSettingsTab(tab);
+    setSettingsOpen(true);
+  };
+
+  const renderBoard = () => {
+    switch (activeBoard) {
+      case 'braindump': return <BrainDump onOpenSettings={openSettings} />;
+      case 'command': return <CommandCenter />;
+      case 'content': return <ContentHub />;
+      case 'learning': return <LearningCenter />;
+      case 'finance': return <FinanceBoard />;
+      default: return <BrainDump onOpenSettings={openSettings} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-bg">
+      <Header onOpenSettings={() => openSettings('tags')} />
+      <NavBar active={activeBoard} onChange={setActiveBoard} />
+      <main className="pb-20">
+        {renderBoard()}
+      </main>
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} initialTab={settingsTab} />
+    </div>
+  );
+}
+
+// ─── Mount ───
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <DataProvider><App /></DataProvider>
+);
+</script>
+</body>
+</html>
