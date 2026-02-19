@@ -2,16 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#F5F3EF">
 <meta name="apple-mobile-web-app-title" content="Lia's OS">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Lia's OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- Supabase JS SDK (v2 browser bundle) -->
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- localForage for offline IndexedDB cache -->
+<script src="https://unpkg.com/localforage@1.10.0/dist/localforage.min.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -57,7 +64,32 @@ tailwind.config = {
   .rich-editor s { color: #9B9488; text-decoration: line-through; }
   /* Card shadow for depth on light bg */
   .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
+  /* Hide scrollbar for nav */
+  nav::-webkit-scrollbar { display: none; }
+  /* Safe area insets for notched phones */
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  /* Touch-friendly: minimum 44px tap targets on mobile */
+  @media (max-width: 640px) {
+    button, [role="button"] { min-height: 40px; }
+    input, textarea, select { font-size: 16px !important; } /* Prevents iOS zoom on focus */
+  }
+  /* Login screen */
+  .login-card { max-width: 380px; margin: 15vh auto; }
+  /* Sync indicator */
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .sync-dot.online { background: #10B981; }
+  .sync-dot.offline { background: #EF4444; }
+  .sync-dot.syncing { background: #F59E0B; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
 </style>
+<script>
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -78,6 +110,257 @@ function useLocalStorage(key, defaultValue) {
   }, [key, value]);
   return [value, setValue];
 }
+
+// ════════════════════════════════════════════
+// ─── SUPABASE CONFIG ───
+// ════════════════════════════════════════════
+// ➡️ Replace these with your Supabase project values
+const SUPABASE_URL      = 'TODO_MY_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'TODO_MY_SUPABASE_ANON_KEY';
+
+const sb = (typeof supabase !== 'undefined' && SUPABASE_URL !== 'TODO_MY_SUPABASE_URL')
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+// ════════════════════════════════════════════
+// ─── AUTH CONTEXT ───
+// ════════════════════════════════════════════
+const AuthContext = createContext({ user: null, loading: true });
+
+function AuthProvider({ children }) {
+  const [user, setUser]       = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!sb) { setLoading(false); return; }
+    // Check current session
+    sb.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+    // Listen for auth changes
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return <AuthContext.Provider value={{ user, loading }}>{children}</AuthContext.Provider>;
+}
+
+function useAuth() { return useContext(AuthContext); }
+
+// ─── Login Screen ───
+function LoginScreen() {
+  const [email, setEmail]     = useState('');
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState('');
+  const [busy, setBusy]       = useState(false);
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    setBusy(true); setError('');
+    const { error: err } = await sb.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin + window.location.pathname }
+    });
+    setBusy(false);
+    if (err) setError(err.message);
+    else setSent(true);
+  };
+
+  return (
+    <div className="min-h-screen bg-bg flex items-start justify-center px-4">
+      <div className="login-card w-full bg-card border border-border rounded-2xl p-8 text-center">
+        <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-accent to-purple-400 flex items-center justify-center text-2xl">🧠</div>
+        <h1 className="text-xl font-bold mb-1">Lia's OS</h1>
+        <p className="text-dim text-sm mb-6">Sign in to sync your data across devices</p>
+
+        {sent ? (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">
+            Check your email for a magic link! You can close this tab — the link will bring you back.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
+              placeholder="your@email.com"
+              className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text outline-none focus:border-accent transition-colors" />
+            <button onClick={handleSend} disabled={busy}
+              className="w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-medium text-sm transition-colors disabled:opacity-50">
+              {busy ? 'Sending...' : 'Send magic link'}
+            </button>
+            {error && <p className="text-red-500 text-xs">{error}</p>}
+          </div>
+        )}
+
+        <p className="text-dim text-xs mt-6">No password needed — we'll email you a sign-in link.</p>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════
+// ─── OFFLINE CACHE (localForage / IndexedDB) ───
+// ════════════════════════════════════════════
+const cache = (typeof localforage !== 'undefined') ? localforage.createInstance({ name: 'liaos' }) : null;
+
+async function cacheSaveSettings(settings) {
+  if (cache) await cache.setItem('settings', settings).catch(() => {});
+}
+async function cacheSaveData(data) {
+  if (cache) await cache.setItem('data', data).catch(() => {});
+}
+async function cacheLoadSettings() {
+  if (!cache) return null;
+  return cache.getItem('settings').catch(() => null);
+}
+async function cacheLoadData() {
+  if (!cache) return null;
+  return cache.getItem('data').catch(() => null);
+}
+
+// ════════════════════════════════════════════
+// ─── SUPABASE SYNC LAYER ───
+// ════════════════════════════════════════════
+// Maps between the app's in-memory data model and the entries table.
+// Array-based collections (dumps, tasks, etc.) are stored as individual rows.
+// Settings & goals are stored in user_settings table.
+
+// Which keys in the data object are arrays of items (each with .id)?
+const ITEM_COLLECTIONS = [
+  'dumps', 'tasks', 'events', 'contentPipeline',
+  'references', 'learnings', 'fixedExpenses', 'expenses',
+];
+// Type name used in the DB entries.type column for each collection
+const COLLECTION_TYPE_MAP = {
+  dumps: 'dump', tasks: 'task', events: 'event',
+  contentPipeline: 'content_pipeline', references: 'reference',
+  learnings: 'learning', fixedExpenses: 'fixed_expense', expenses: 'expense',
+};
+
+// Flatten stickyNotes object → array of entries with domain in payload
+function flattenStickyNotes(stickyObj) {
+  const arr = [];
+  for (const [domain, notes] of Object.entries(stickyObj || {})) {
+    for (const note of notes) {
+      arr.push({ id: note.id, type: 'sticky_note', payload: { ...note, domain } });
+    }
+  }
+  return arr;
+}
+
+// Rebuild stickyNotes object from flat entries
+function unflattenStickyNotes(entries) {
+  const obj = {};
+  for (const e of entries) {
+    const { domain, ...rest } = e.payload;
+    if (!obj[domain]) obj[domain] = [];
+    obj[domain].push(rest);
+  }
+  return obj;
+}
+
+// Convert full app data → array of DB entry rows
+function dataToEntries(userId, data) {
+  const rows = [];
+  for (const col of ITEM_COLLECTIONS) {
+    const type = COLLECTION_TYPE_MAP[col];
+    for (const item of (data[col] || [])) {
+      rows.push({
+        id: item.id,
+        user_id: userId,
+        type,
+        payload: item,
+        created_at: item.createdAt || item.date || new Date().toISOString(),
+      });
+    }
+  }
+  // Sticky notes
+  rows.push(...flattenStickyNotes(data.stickyNotes).map(e => ({
+    ...e, user_id: userId, created_at: e.payload.createdAt || new Date().toISOString(),
+  })));
+  return rows;
+}
+
+// Convert DB entry rows → app data object
+function entriesToData(entries, fallbackData) {
+  const data = { ...fallbackData };
+  // Clear collections that will be rebuilt from entries
+  for (const col of ITEM_COLLECTIONS) data[col] = [];
+  data.stickyNotes = {};
+
+  const stickyEntries = [];
+  for (const entry of entries) {
+    // Reverse-map type → collection name
+    const col = Object.keys(COLLECTION_TYPE_MAP).find(k => COLLECTION_TYPE_MAP[k] === entry.type);
+    if (col) {
+      data[col].push(entry.payload);
+    } else if (entry.type === 'sticky_note') {
+      stickyEntries.push(entry);
+    }
+  }
+  data.stickyNotes = unflattenStickyNotes(stickyEntries);
+  return data;
+}
+
+// Supabase CRUD wrappers
+async function loadEntries(userId) {
+  if (!sb) return null;
+  const { data, error } = await sb.from('entries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  if (error) { console.error('[sync] loadEntries error:', error); return null; }
+  return data;
+}
+
+async function loadSettings(userId) {
+  if (!sb) return null;
+  const { data, error } = await sb.from('user_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) { console.error('[sync] loadSettings error:', error); return null; }
+  return data;
+}
+
+async function saveEntriesToSupabase(userId, appData) {
+  if (!sb) return;
+  const rows = dataToEntries(userId, appData);
+  if (rows.length > 0) {
+    // Upsert all current entries
+    const { error } = await sb.from('entries')
+      .upsert(rows, { onConflict: 'id' });
+    if (error) console.error('[sync] saveEntries upsert error:', error);
+  }
+  // Clean up deleted entries: remove any DB rows not in current data
+  const currentIds = rows.map(r => r.id);
+  const { data: dbRows } = await sb.from('entries')
+    .select('id')
+    .eq('user_id', userId);
+  if (dbRows) {
+    const toDelete = dbRows.filter(r => !currentIds.includes(r.id)).map(r => r.id);
+    if (toDelete.length > 0) {
+      await sb.from('entries').delete().in('id', toDelete);
+    }
+  }
+}
+
+async function saveSettingsToSupabase(userId, settings, goals) {
+  if (!sb) return;
+  const { error } = await sb.from('user_settings')
+    .upsert({
+      user_id: userId,
+      settings,
+      goals,
+    }, { onConflict: 'user_id' });
+  if (error) console.error('[sync] saveSettings error:', error);
+}
+
+// ─── Sync status context ───
+const SyncContext = createContext({ status: 'idle', lastSync: null });
+function useSync() { return useContext(SyncContext); }
 
 // ─── ID Generator ───
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -200,17 +483,112 @@ const DataContext = createContext();
 function DataProvider({ children }) {
   const [settings, setSettings] = useLocalStorage('liaos_settings', DEFAULT_SETTINGS);
   const [data, setData] = useLocalStorage('liaos_data', DEFAULT_DATA);
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'online' | 'offline'
+  const [lastSync, setLastSync] = useState(null);
+  const { user } = useAuth();
+  const syncTimer = useRef(null);
+  const dataRef = useRef(data);
+  const settingsRef = useRef(settings);
+  dataRef.current = data;
+  settingsRef.current = settings;
 
+  // ─── Debounced push to Supabase ───
+  const schedulePush = useCallback(() => {
+    if (!user) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(async () => {
+      setSyncStatus('syncing');
+      try {
+        await Promise.all([
+          saveEntriesToSupabase(user.id, dataRef.current),
+          saveSettingsToSupabase(user.id, settingsRef.current, dataRef.current.goals),
+        ]);
+        // Also update IndexedDB cache
+        await Promise.all([
+          cacheSaveData(dataRef.current),
+          cacheSaveSettings(settingsRef.current),
+        ]);
+        setSyncStatus('online');
+        setLastSync(new Date());
+      } catch (err) {
+        console.error('[sync] push failed:', err);
+        setSyncStatus('offline');
+      }
+    }, 1500); // 1.5s debounce
+  }, [user]);
+
+  // ─── Initial sync: load from cache, then Supabase ───
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    (async () => {
+      // Step 1: Load from IndexedDB cache (fast, local)
+      const [cachedData, cachedSettings] = await Promise.all([
+        cacheLoadData(), cacheLoadSettings(),
+      ]);
+      if (cancelled) return;
+      if (cachedData)     setData(cachedData);
+      if (cachedSettings) setSettings(cachedSettings);
+
+      // Step 2: Load from Supabase (source of truth)
+      if (!sb) { setSyncStatus('offline'); return; }
+      setSyncStatus('syncing');
+      try {
+        const [entries, settingsRow] = await Promise.all([
+          loadEntries(user.id),
+          loadSettings(user.id),
+        ]);
+        if (cancelled) return;
+
+        if (entries && entries.length > 0) {
+          const rebuilt = entriesToData(entries, dataRef.current);
+          // Preserve goals from user_settings if present
+          if (settingsRow?.goals && Object.keys(settingsRow.goals).length > 0) {
+            rebuilt.goals = settingsRow.goals;
+          }
+          setData(rebuilt);
+          await cacheSaveData(rebuilt);
+        }
+        if (settingsRow?.settings && Object.keys(settingsRow.settings).length > 0) {
+          setSettings(settingsRow.settings);
+          await cacheSaveSettings(settingsRow.settings);
+        }
+        setSyncStatus('online');
+        setLastSync(new Date());
+      } catch (err) {
+        console.error('[sync] initial pull failed:', err);
+        setSyncStatus('offline');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // ─── Data & settings writers (trigger sync) ───
   const updateData = useCallback((key, updater) => {
-    setData(prev => ({
-      ...prev,
-      [key]: typeof updater === 'function' ? updater(prev[key]) : updater,
-    }));
-  }, [setData]);
+    setData(prev => {
+      const next = { ...prev, [key]: typeof updater === 'function' ? updater(prev[key]) : updater };
+      return next;
+    });
+    schedulePush();
+  }, [setData, schedulePush]);
 
   const updateSettings = useCallback((key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }));
-  }, [setSettings]);
+    schedulePush();
+  }, [setSettings, schedulePush]);
+
+  // Expose setSettings/setData that also schedule push
+  const setSettingsAndSync = useCallback((val) => {
+    setSettings(val);
+    schedulePush();
+  }, [setSettings, schedulePush]);
+
+  const setDataAndSync = useCallback((val) => {
+    setData(val);
+    schedulePush();
+  }, [setData, schedulePush]);
 
   const getAreaColor = useCallback((areaName) => {
     const area = settings.areas.find(a => a.name === areaName);
@@ -223,12 +601,16 @@ function DataProvider({ children }) {
   }, [settings.areas]);
 
   const value = useMemo(() => ({
-    settings, setSettings, updateSettings,
-    data, setData, updateData,
+    settings, setSettings: setSettingsAndSync, updateSettings,
+    data, setData: setDataAndSync, updateData,
     getAreaColor, getAreaEmoji,
   }), [settings, data]);
 
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+  return (
+    <SyncContext.Provider value={{ status: syncStatus, lastSync }}>
+      <DataContext.Provider value={value}>{children}</DataContext.Provider>
+    </SyncContext.Provider>
+  );
 }
 
 function useData() { return useContext(DataContext); }
@@ -532,9 +914,29 @@ function DataActions({ onOpenSettings }) {
           <div className="border-t border-border my-1" />
           <button onClick={() => { if (confirm('This will reset ALL data to defaults. Are you sure?')) { localStorage.removeItem('liaos_settings'); localStorage.removeItem('liaos_data'); location.reload(); } }}
             className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-black/5">🔄 Reset to defaults</button>
+          {sb && (
+            <>
+              <div className="border-t border-border my-1" />
+              <button onClick={() => { sb.auth.signOut(); setShowMenu(false); }}
+                className="w-full text-left px-4 py-2 text-sm text-dim hover:bg-black/5">🚪 Sign out</button>
+            </>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Sync Indicator ───
+function SyncIndicator() {
+  const { status, lastSync } = useSync();
+  const label = { idle: 'Local', syncing: 'Syncing...', online: 'Synced', offline: 'Offline' }[status] || '';
+  const dotClass = status === 'syncing' ? 'syncing' : (status === 'online' ? 'online' : 'offline');
+  return (
+    <span className="flex items-center gap-1.5 text-[10px] text-dim" title={lastSync ? `Last sync: ${lastSync.toLocaleTimeString()}` : ''}>
+      <span className={`sync-dot ${dotClass}`} />
+      <span className="hidden sm:inline">{label}</span>
+    </span>
   );
 }
 
@@ -542,12 +944,13 @@ function DataActions({ onOpenSettings }) {
 function Header({ onOpenSettings }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   return (
-    <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+    <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-card sticky top-0 z-30">
       <div className="flex items-center gap-2 sm:gap-3">
         <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-accent to-purple-400 flex items-center justify-center text-base sm:text-lg">🧠</div>
         <span className="text-lg sm:text-xl font-semibold tracking-tight">Lia's OS</span>
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
+        <SyncIndicator />
         <span className="text-dim text-sm hidden md:block">{today}</span>
         <DataActions onOpenSettings={onOpenSettings} />
       </div>
@@ -565,11 +968,11 @@ function NavBar({ active, onChange }) {
     { key: 'finance', icon: '💰', label: 'Finance' },
   ];
   return (
-    <nav className="flex border-b border-border overflow-x-auto scrollbar-hide">
+    <nav className="flex border-b border-border overflow-x-auto bg-card sticky top-[49px] sm:top-[57px] z-20" style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
       {boards.map(b => (
         <button key={b.key} onClick={() => onChange(b.key)}
-          className={`flex-1 sm:flex-none px-3 sm:px-5 py-3 text-xs sm:text-sm font-medium whitespace-nowrap transition-colors text-center ${active === b.key ? 'bg-white text-text border-b-2 border-accent' : 'text-dim hover:text-text hover:bg-black/5'}`}>
-          <span className="sm:hidden">{b.icon}</span>
+          className={`flex-1 min-w-0 px-2 sm:px-5 py-3.5 text-xs sm:text-sm font-medium whitespace-nowrap transition-colors text-center ${active === b.key ? 'bg-white text-text border-b-2 border-accent' : 'text-dim hover:text-text hover:bg-black/5'}`}>
+          <span className="sm:hidden text-base">{b.icon}</span>
           <span className="hidden sm:inline">{b.icon} {b.label}</span>
         </button>
       ))}
@@ -2334,9 +2737,31 @@ function App() {
   );
 }
 
+// ─── Auth Gate ───
+// If Supabase is configured, require login. Otherwise, run in local-only mode.
+function AuthGate() {
+  const { user, loading } = useAuth();
+
+  // Loading spinner
+  if (loading) return (
+    <div className="min-h-screen bg-bg flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-accent to-purple-400 flex items-center justify-center text-xl">🧠</div>
+        <p className="text-dim text-sm">Loading...</p>
+      </div>
+    </div>
+  );
+
+  // Supabase configured but not logged in → show login
+  if (sb && !user) return <LoginScreen />;
+
+  // Either: no Supabase (local-only mode), or logged in → show app
+  return <DataProvider><App /></DataProvider>;
+}
+
 // ─── Mount ───
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <DataProvider><App /></DataProvider>
+  <AuthProvider><AuthGate /></AuthProvider>
 );
 </script>
 </body>
