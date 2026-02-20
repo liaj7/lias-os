@@ -2,7 +2,7 @@
 // Strategy: Cache the app shell for offline use.
 // Supabase data is NOT cached here (handled by localForage in the app).
 
-const CACHE_NAME = 'liaos-v2';
+const CACHE_NAME = 'liaos-v3';
 
 // App shell files to cache for offline use
 const SHELL_FILES = [
@@ -19,7 +19,7 @@ const CDN_FILES = [
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
-  'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
   'https://unpkg.com/localforage@1.10.0/dist/localforage.min.js',
 ];
 
