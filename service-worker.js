@@ -2,7 +2,7 @@
 // Strategy: Cache the app shell for offline use.
 // Supabase data is NOT cached here (handled by localForage in the app).
 
-const CACHE_NAME = 'liaos-v1';
+const CACHE_NAME = 'liaos-v2';
 
 // App shell files to cache for offline use
 const SHELL_FILES = [
