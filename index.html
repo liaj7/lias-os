@@ -153,20 +153,30 @@ function useAuth() { return useContext(AuthContext); }
 // ─── Login Screen ───
 function LoginScreen() {
   const [email, setEmail]     = useState('');
-  const [sent, setSent]       = useState(false);
+  const [code, setCode]       = useState('');
+  const [step, setStep]       = useState('email'); // 'email' | 'code'
   const [error, setError]     = useState('');
   const [busy, setBusy]       = useState(false);
 
   const handleSend = async () => {
     if (!email.trim()) return;
     setBusy(true); setError('');
-    const { error: err } = await sb.auth.signInWithOtp({
+    const { error: err } = await sb.auth.signInWithOtp({ email: email.trim() });
+    setBusy(false);
+    if (err) setError(err.message);
+    else setStep('code');
+  };
+
+  const handleVerify = async () => {
+    if (!code.trim()) return;
+    setBusy(true); setError('');
+    const { error: err } = await sb.auth.verifyOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin + window.location.pathname }
+      token: code.trim(),
+      type: 'email'
     });
     setBusy(false);
     if (err) setError(err.message);
-    else setSent(true);
   };
 
   return (
@@ -176,9 +186,23 @@ function LoginScreen() {
         <h1 className="text-xl font-bold mb-1">Lia's OS</h1>
         <p className="text-dim text-sm mb-6">Sign in to sync your data across devices</p>
 
-        {sent ? (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">
-            Check your email for a magic link! You can close this tab — the link will bring you back.
+        {step === 'code' ? (
+          <div className="space-y-3">
+            <p className="text-sm text-text mb-1">Enter the 6-digit code sent to <strong>{email}</strong></p>
+            <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+              value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => { if (e.key === 'Enter') handleVerify(); }}
+              placeholder="000000"
+              className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-center text-2xl tracking-[0.3em] font-mono text-text outline-none focus:border-accent transition-colors" />
+            <button onClick={handleVerify} disabled={busy || code.length < 6}
+              className="w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-medium text-sm transition-colors disabled:opacity-50">
+              {busy ? 'Verifying...' : 'Verify code'}
+            </button>
+            <button onClick={() => { setStep('email'); setCode(''); setError(''); }}
+              className="text-dim text-xs hover:text-text transition-colors">
+              Use a different email
+            </button>
+            {error && <p className="text-red-500 text-xs">{error}</p>}
           </div>
         ) : (
           <div className="space-y-3">
@@ -188,13 +212,13 @@ function LoginScreen() {
               className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text outline-none focus:border-accent transition-colors" />
             <button onClick={handleSend} disabled={busy}
               className="w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-medium text-sm transition-colors disabled:opacity-50">
-              {busy ? 'Sending...' : 'Send magic link'}
+              {busy ? 'Sending...' : 'Send login code'}
             </button>
             {error && <p className="text-red-500 text-xs">{error}</p>}
           </div>
         )}
 
-        <p className="text-dim text-xs mt-6">No password needed — we'll email you a sign-in link.</p>
+        <p className="text-dim text-xs mt-6">No password needed. We'll email you a 6-digit code.</p>
       </div>
     </div>
   );
